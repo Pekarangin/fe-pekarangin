@@ -38,9 +38,9 @@ export const Input: React.FC<InputProps> = ({
       <View
         className={`flex-row items-center bg-[#F9FAFB] border rounded-2xl px-3.5 py-3 ${
           error
-            ? 'border-red-400 bg-red-50/20'
+            ? 'border-red-500 bg-red-50'
             : isFocused
-            ? 'border-[#1C7430] bg-white ring-2 ring-green-100'
+            ? 'border-[#1C7430] bg-white'
             : 'border-gray-200'
         } ${className}`}
       >

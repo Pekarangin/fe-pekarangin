@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useEffect, useCallback, useRef } from 'react';
+import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useRouter, useRootNavigationState } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Logo } from '../components/ui/Logo';
 import { useApp } from '../context/AppContext';
@@ -8,24 +8,38 @@ import { useApp } from '../context/AppContext';
 export default function SplashScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const rootNavigationState = useRootNavigationState();
   const { isOnboarded, isAuthenticated } = useApp();
+  const navigatedRef = useRef(false);
+
+  const performNavigation = useCallback(() => {
+    if (navigatedRef.current) return;
+    if (!rootNavigationState?.key) return;
+
+    navigatedRef.current = true;
+    if (!isOnboarded) {
+      router.replace('/onboarding');
+    } else if (!isAuthenticated) {
+      router.replace('/(auth)/login');
+    } else {
+      router.replace('/(tabs)');
+    }
+  }, [rootNavigationState?.key, isOnboarded, isAuthenticated, router]);
 
   useEffect(() => {
+    if (!rootNavigationState?.key) return;
+
     const timer = setTimeout(() => {
-      if (!isOnboarded) {
-        router.replace('/onboarding');
-      } else if (!isAuthenticated) {
-        router.replace('/(auth)/login');
-      } else {
-        router.replace('/(tabs)');
-      }
-    }, 1800);
+      performNavigation();
+    }, 600);
 
     return () => clearTimeout(timer);
-  }, [isOnboarded, isAuthenticated, router]);
+  }, [rootNavigationState?.key, performNavigation]);
 
   return (
-    <View
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={performNavigation}
       style={{
         paddingTop: Math.max(insets.top, 24),
         paddingBottom: Math.max(insets.bottom, 24),
@@ -49,6 +63,6 @@ export default function SplashScreen() {
           Suburkan Pekarangan, Hemat{'\n'}Belanja, Hijaukan Kota
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }

@@ -28,6 +28,7 @@ import { useApp } from '../../context/AppContext';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { RekomendasiItem } from '../../types';
+import { getCropImageSource } from '../../constants/cropImages';
 
 export default function RekomendasiTab() {
   const router = useRouter();
@@ -102,22 +103,36 @@ export default function RekomendasiTab() {
         </View>
 
         {/* Lahan Context Pill */}
-        <View className="flex-row items-center justify-between bg-[#E8F5E9] border border-green-200/80 px-4 py-3 rounded-2xl mb-5">
-          <View className="flex-row items-center">
+        <View className="flex-row items-center justify-between bg-[#E8F5E9] border border-green-200/80 px-4 py-3 rounded-2xl mb-3">
+          <View className="flex-row items-center flex-1 mr-2">
             <Sun size={16} color="#1C7430" />
-            <Text className="text-xs font-bold text-[#1C7430] ml-2">
-              Lahan: {activeLahan?.nama_lahan || 'Pekarangan Utama'} ({activeLahan?.luas_m2 || 6.75} m²)
+            <Text className="text-xs font-bold text-[#1C7430] ml-2" numberOfLines={1}>
+              {activeLahan ? `Lahan: ${activeLahan.nama_lahan} (${activeLahan.luas_m2} m² • ${activeLahan.paparan_sinar === 'FULL_SUN' ? 'Sinar Penuh' : activeLahan.paparan_sinar === 'PARTIAL_SUN' ? 'Sinar Parsial' : 'Teduh'})` : 'Belum Ada Lahan Terdaftar'}
             </Text>
           </View>
           <TouchableOpacity
             onPress={() => router.push('/(tabs)/lahan')}
-            className="flex-row items-center"
+            className="flex-row items-center px-2.5 py-1 bg-[#1C7430] rounded-xl"
           >
-            <Text className="text-xs font-bold text-[#1C7430] underline">
-              Ubah
+            <Text className="text-xs font-bold text-white">
+              {activeLahan ? 'Ubah' : 'Buat Lahan'}
             </Text>
           </TouchableOpacity>
         </View>
+
+        {!activeLahan && (
+          <View className="bg-amber-50 border border-amber-200/70 p-3.5 rounded-2xl mb-4 flex-row items-start">
+            <Sparkles size={16} color="#D97706" style={{ marginTop: 2, marginRight: 8 }} />
+            <View className="flex-1">
+              <Text className="text-xs font-bold text-amber-900">
+                Menampilkan Katalog Komoditas API
+              </Text>
+              <Text className="text-[11px] text-amber-800 mt-0.5 leading-tight">
+                Buat sketsa lahan di tab Lahan agar AI Pekarang dapat menghitung ranking prioritas & estimasi hemat khusus kondisi pekarangan Anda.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Category Filter Pills */}
         <ScrollView
@@ -200,7 +215,7 @@ export default function RekomendasiTab() {
                   className="relative h-44 w-full bg-gray-100"
                 >
                   <Image
-                    source={{ uri: item.image_url }}
+                    source={getCropImageSource(item.nama, item.image_url)}
                     className="w-full h-full"
                     resizeMode="cover"
                   />
@@ -297,10 +312,10 @@ export default function RekomendasiTab() {
                   </View>
 
                   {/* Buttons: Panduan Detail & + Tanam Ini */}
-                  <View className="flex-row space-x-2">
+                  <View className="flex-row items-center mt-1" style={{ gap: 12 }}>
                     <TouchableOpacity
                       onPress={() => setSelectedDetailItem(item)}
-                      className="bg-green-50 border border-green-200 px-3.5 py-3 rounded-2xl items-center justify-center flex-row"
+                      className="bg-green-50 border border-green-200 px-4 py-3.5 rounded-2xl items-center justify-center flex-row"
                     >
                       <BookOpen size={16} color="#1C7430" />
                       <Text className="text-xs font-bold text-[#1C7430] ml-1.5">
@@ -310,10 +325,10 @@ export default function RekomendasiTab() {
 
                     <View className="flex-1">
                       {alreadyPlanted || isJustPlanted ? (
-                        <View className="flex-row items-center justify-between bg-green-50 border border-green-200 py-3 px-3.5 rounded-2xl">
+                        <View className="flex-row items-center justify-between bg-green-50 border border-green-200 py-3.5 px-3.5 rounded-2xl">
                           <View className="flex-row items-center flex-1 mr-2">
                             <CheckCircle2 size={16} color="#1C7430" />
-                            <Text className="text-xs font-bold text-[#1C7430] ml-1.5 numberOfLines={1}">
+                            <Text className="text-xs font-bold text-[#1C7430] ml-1.5" numberOfLines={1}>
                               Sedang Ditanam
                             </Text>
                           </View>
@@ -375,7 +390,7 @@ export default function RekomendasiTab() {
                     {/* Plant Title & Image */}
                     <View className="flex-row items-center mb-4">
                       <Image
-                        source={{ uri: selectedDetailItem.image_url }}
+                        source={getCropImageSource(selectedDetailItem.nama, selectedDetailItem.image_url)}
                         className="w-16 h-16 rounded-2xl mr-3.5 bg-gray-100"
                         resizeMode="cover"
                       />

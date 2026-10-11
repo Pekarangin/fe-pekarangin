@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,18 +14,18 @@ import {
   Trees,
   Droplets,
   Sprout,
-  CheckCircle2,
   Circle,
   ChevronRight,
-  Flame,
   Sparkles,
-  Grid,
   Sun,
   Plus,
   ArrowRight,
+  Check,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { Badge } from '../../components/ui/Badge';
+import { getCropImageSource } from '../../constants/cropImages';
+import { fetchLiveWeather, RealWeather } from '../../services/weather';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
@@ -37,8 +37,9 @@ export default function DashboardHomeScreen() {
     activeLahan,
     toggleAllSiram,
     toggleAllPupuk,
-    reminders,
   } = useApp();
+
+  const [weather, setWeather] = useState<RealWeather | null>(null);
 
   const activeOnlyCrops = activeCrops.filter(c => c.status === 'AKTIF');
   const isSiramDone =
@@ -48,11 +49,21 @@ export default function DashboardHomeScreen() {
     activeOnlyCrops.length > 0 &&
     activeOnlyCrops.every(c => c.checklist_hari_ini?.pupuk_done);
 
-  const activeReminderList = reminders.filter(r => r.enabled);
-  const nextReminder = activeReminderList[0] || reminders[0];
-  const nextReminderTimeStr = nextReminder
-    ? `${String(nextReminder.hour).padStart(2, '0')}:${String(nextReminder.minute).padStart(2, '0')} WIB`
-    : '16:30 WIB';
+  // Ambil cuaca real-time berdasarkan lokasi/wilayah user
+  useEffect(() => {
+    let isMounted = true;
+    fetchLiveWeather(user?.wilayah, activeOnlyCrops.length > 0)
+      .then(data => {
+        if (isMounted) setWeather(data);
+      })
+      .catch(err => {
+        console.warn('Gagal ambil data cuaca:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.wilayah, activeOnlyCrops.length]);
 
   const formatRupiah = (num: number) => {
     return 'Rp ' + num.toLocaleString('id-ID');
@@ -81,284 +92,416 @@ export default function DashboardHomeScreen() {
       style={{
         paddingTop: Math.max(insets.top, 16),
       }}
-      className="flex-1 bg-[#F8FAF8]"
+      className="flex-1 bg-[#F6F8F6]"
     >
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 110 }}
-        className="px-5 pt-2"
+        className="px-5 pt-1"
       >
-        {/* Top Bar Location & Streak Pill */}
+        {/* Top Bar: Location & User Profile Avatar */}
         <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-row items-center">
-            <View className="w-8 h-8 rounded-full bg-green-50 items-center justify-center mr-2">
-              <MapPin size={18} color="#1C7430" />
+          <View className="flex-row items-center bg-white px-3 py-1.5 rounded-full border border-gray-200/80 shadow-2xs max-w-[70%]">
+            <View className="w-5 h-5 rounded-full bg-emerald-100 items-center justify-center mr-1.5">
+              <MapPin size={12} color="#166534" />
             </View>
             <View>
-              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                Lokasi Pilot
-              </Text>
-              <Text className="text-xs font-bold text-gray-900">
-                {user?.wilayah || 'Jakarta Selatan'}
+              <Text className="text-[11px] font-bold text-gray-800" numberOfLines={1}>
+                {user?.wilayah || weather?.locationName || 'Lokasi Pekarangan'}
               </Text>
             </View>
           </View>
 
-          {/* Streak Pill */}
-          <TouchableOpacity
-            onPress={() => router.push('/(tabs)/tracking')}
-            activeOpacity={0.8}
-            className="flex-row items-center bg-[#FFF7ED] border border-[#FED7AA] px-3 py-1 rounded-full"
-          >
-            <Flame size={14} color="#EA580C" fill="#EA580C" />
-            <Text className="text-xs font-black text-[#EA580C] ml-1">
-              {stats.streak_hari} Hari
-            </Text>
-          </TouchableOpacity>
+          <View style={{ gap: 8 }} className="flex-row items-center">
+            {/* Real Weather Mini Pill */}
+            {weather && (
+              <View className="flex-row items-center bg-amber-50/90 border border-amber-200/90 px-2.5 py-1.5 rounded-full">
+                <Sun size={12} color="#D97706" />
+                <Text className="text-[11px] font-black text-amber-900 ml-1">
+                  {weather.temperature}°C
+                </Text>
+              </View>
+            )}
+
+            {/* Profile Avatar Thumbnail */}
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/profile')}
+              activeOpacity={0.85}
+              className="w-9 h-9 rounded-full bg-emerald-800 border-2 border-white items-center justify-center shadow-xs overflow-hidden"
+            >
+              {user?.avatar_url ? (
+                <Image
+                  source={{ uri: user.avatar_url }}
+                  className="w-full h-full"
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text className="text-xs font-black text-white">
+                  {user?.nama ? user.nama.charAt(0).toUpperCase() : 'P'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Greeting Banner */}
-        <View className="mb-5">
-          <Text className="text-2xl font-black text-gray-900 tracking-tight">
-            Selamat Pagi, {user?.nama?.split(' ')[0] || 'Alex'} 👋
+        {/* Greeting Section */}
+        <View className="mb-4">
+          <Text className="text-[26px] font-black text-gray-900 tracking-tight">
+            Halo, {user?.nama ? user.nama.split(' ')[0] : 'Sobat'} 🌱
           </Text>
-          <Text className="text-xs font-medium text-gray-500 mt-1">
-            Pantau dan rawat pekarangan mandiri Anda hari ini.
+          <Text className="text-xs font-semibold text-gray-500 mt-0.5">
+            Pekarangan pangan mandiri Anda siap dipantau hari ini.
           </Text>
         </View>
 
-        {/* Hero Green Stats Card (RTH & Hemat Belanja) */}
+        {/* Hero Green Stats Card (Modern Deep Emerald) */}
         <TouchableOpacity
           onPress={() => router.push('/(tabs)/profile')}
-          activeOpacity={0.92}
-          className="bg-[#1C7430] rounded-3xl p-6 shadow-md shadow-[#1C7430]/30 mb-6"
+          activeOpacity={0.94}
+          className="bg-[#124E2A] rounded-3xl p-5 mb-5 shadow-lg shadow-[#124E2A]/25 border border-emerald-700/40 relative overflow-hidden"
         >
+          {/* Subtle Decorative Circle Pattern */}
+          <View className="absolute -right-12 -top-12 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
+          <View className="absolute right-10 -bottom-16 w-36 h-36 rounded-full bg-emerald-400/10 pointer-events-none" />
+
+          {/* Hero Header */}
           <View className="flex-row justify-between items-start mb-2">
             <View>
-              <Text className="text-xs font-semibold text-green-100 uppercase tracking-wider">
-                Total Hemat Belanja
-              </Text>
-              <Text className="text-3xl font-black text-white mt-1 tracking-tight">
+              <View className="flex-row items-center mb-1">
+                <Text className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider">
+                  Total Hemat Belanja
+                </Text>
+                <View className="bg-emerald-500/25 px-2 py-0.5 rounded-full ml-2 border border-emerald-400/30">
+                  <Text className="text-[10px] font-extrabold text-emerald-100">
+                    Akumulasi Panen
+                  </Text>
+                </View>
+              </View>
+              <Text className="text-[34px] font-black text-white tracking-tight">
                 {formatRupiah(stats.total_hemat_rp)}
               </Text>
             </View>
 
-            <View className="w-11 h-11 rounded-2xl bg-white/15 items-center justify-center border border-white/20">
-              <Leaf size={22} color="#FFFFFF" fill="#FFFFFF" />
+            <View className="w-12 h-12 rounded-2xl bg-white/15 items-center justify-center border border-white/20 shadow-inner">
+              <Leaf size={24} color="#A7F3D0" fill="#A7F3D0" />
             </View>
           </View>
 
-          {/* Divider */}
-          <View className="h-[1px] bg-white/20 my-4" />
+          {/* Hero Divider */}
+          <View className="h-[1px] bg-white/15 my-3.5" />
 
-          {/* Card Footer: RTH Aktif & Total Panen */}
+          {/* 3-Pill Micro Stats Row */}
           <View className="flex-row items-center justify-between">
+            {/* RTH Lahan */}
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/lahan')}
-              className="flex-row items-center bg-white/10 px-3 py-1.5 rounded-xl"
+              className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-2.5 mr-2 items-center"
             >
-              <Trees size={16} color="#A7F3D0" />
-              <Text className="text-xs font-semibold text-green-100 ml-1.5">
-                RTH Pekarangan: <Text className="font-bold text-white">{activeRth} m²</Text>
+              <View className="flex-row items-center mb-0.5">
+                <Trees size={13} color="#6EE7B7" />
+                <Text className="text-[10px] font-bold text-emerald-200 ml-1">
+                  Luas RTH
+                </Text>
+              </View>
+              <Text className="text-xs font-black text-white">
+                {activeRth || 0} m²
               </Text>
             </TouchableOpacity>
 
-            <View className="flex-row items-center">
-              <Text className="text-xs font-bold text-green-100">
-                Panen: <Text className="font-black text-white">{stats.total_panen_kg} kg</Text>
+            {/* Total Panen */}
+            <View className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-2.5 mr-2 items-center">
+              <View className="flex-row items-center mb-0.5">
+                <Sprout size={13} color="#FDE047" />
+                <Text className="text-[10px] font-bold text-emerald-200 ml-1">
+                  Hasil Panen
+                </Text>
+              </View>
+              <Text className="text-xs font-black text-white">
+                {stats.total_panen_kg} kg
               </Text>
             </View>
+
+            {/* Tanaman Aktif */}
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/tracking')}
+              className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-2.5 items-center"
+            >
+              <View className="flex-row items-center mb-0.5">
+                <Sparkles size={13} color="#93C5FD" />
+                <Text className="text-[10px] font-bold text-emerald-200 ml-1">
+                  Tanaman
+                </Text>
+              </View>
+              <Text className="text-xs font-black text-white">
+                {activeOnlyCrops.length} Aktif
+              </Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
 
-        {/* Weather & Solar UV Widget */}
+        {/* Ambient Climate & Solar Advisory Card (Live Real-Time Weather) */}
         <TouchableOpacity
-          onPress={() => router.push('/(tabs)/profile')}
+          onPress={() => router.push('/(tabs)/lahan')}
           activeOpacity={0.88}
-          className="bg-[#FFFBEB] border border-[#FDE68A] rounded-3xl p-4 mb-6 flex-row items-center justify-between shadow-2xs"
+          className="bg-amber-50/90 border border-amber-200 rounded-3xl p-4 mb-5 flex-row items-center justify-between shadow-2xs"
         >
           <View className="flex-row items-center flex-1 mr-2">
-            <View className="w-10 h-10 rounded-2xl bg-[#F59E0B] items-center justify-center mr-3 shadow-xs">
-              <Sun size={22} color="#FFFFFF" />
+            <View className="w-10 h-10 rounded-2xl bg-amber-500 items-center justify-center mr-3 shadow-xs">
+              <Sun size={20} color="#FFFFFF" strokeWidth={2.4} />
             </View>
             <View className="flex-1">
               <View className="flex-row items-center">
-                <Text className="text-xs font-black text-[#92400E]">
-                  31°C Cerah Berawan
+                <Text className="text-xs font-black text-amber-950">
+                  {weather ? `${weather.temperature}°C ${weather.conditionText}` : 'Memuat Cuaca Real-Time...'}
                 </Text>
-                <View className="bg-amber-200 px-1.5 py-0.5 rounded-md ml-2">
-                  <Text className="text-[9px] font-extrabold text-[#78350F]">
-                    UV Tinggi
+                <View className="bg-amber-200/90 px-1.5 py-0.5 rounded-md ml-2">
+                  <Text className="text-[9px] font-extrabold text-amber-900">
+                    {weather?.badgeLabel || 'Real-Time'}
                   </Text>
                 </View>
               </View>
-              <Text className="text-[11px] text-[#B45309] font-medium mt-0.5 leading-snug">
-                Suhu hangat. Alarm siram aktif: <Text className="font-bold text-[#92400E]">{nextReminder?.label || 'Siram'} ({nextReminderTimeStr}) 🔔</Text>
+              <Text className="text-[11px] text-amber-900/80 font-medium mt-0.5 leading-snug">
+                {weather?.advisoryText || 'Memantau iklim dan suhu terkini di pekarangan Anda.'}
               </Text>
+              {weather && (
+                <Text className="text-[10px] text-amber-800/70 font-semibold mt-1">
+                  📍 {weather.locationName} • Kelembapan {weather.humidity}%
+                </Text>
+              )}
             </View>
           </View>
           <ChevronRight size={16} color="#D97706" />
         </TouchableOpacity>
 
-        {/* Quick Stepper Guide Card */}
-        <View className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm shadow-black/5 mb-6">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-sm font-extrabold text-gray-900">
-              Alur Panduan Pekarangan
-            </Text>
+        {/* Quick Stepper Guide: Alur Panduan Pintar */}
+        <View className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm shadow-black/5 mb-5">
+          <View className="flex-row items-center justify-between mb-3.5">
+            <View>
+              <Text className="text-sm font-black text-gray-900">
+                Alur Panduan Pekarangan
+              </Text>
+              <Text className="text-[11px] font-medium text-gray-500">
+                Langkah terpadu panen mandiri berkelanjutan
+              </Text>
+            </View>
             <Badge label="Smart Loop" variant="success" size="sm" />
           </View>
 
-          <View className="space-y-2.5">
+          <View style={{ gap: 12 }}>
+            {/* Step 1: Lahan */}
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/lahan')}
-              className="flex-row items-center justify-between p-3 rounded-2xl bg-green-50/60 border border-green-100"
+              className="flex-row items-center justify-between p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100"
             >
               <View className="flex-row items-center flex-1 mr-2">
-                <View className="w-8 h-8 rounded-xl bg-green-100 items-center justify-center mr-2.5">
-                  <Grid size={16} color="#1C7430" />
+                <View className="w-8 h-8 rounded-xl bg-emerald-600 items-center justify-center mr-3">
+                  <Text className="text-xs font-black text-white">1</Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-xs font-bold text-gray-900">1. Sketsa & Cek Sinar Lahan</Text>
-                  <Text className="text-[11px] text-gray-500">
-                    {activeLahan?.nama_lahan || 'Pekarangan Utama'} ({activeRth} m²)
+                  <Text className="text-xs font-bold text-gray-900">Sketsa & Cek Sinar Lahan</Text>
+                  <Text className="text-[11px] text-emerald-800 font-medium">
+                    {activeLahan ? `${activeLahan.nama_lahan} (${activeRth} m²)` : 'Belum Ada Lahan (Mulai Sketsa)'}
                   </Text>
                 </View>
               </View>
-              <ChevronRight size={16} color="#1C7430" />
+              <ChevronRight size={16} color="#166534" />
             </TouchableOpacity>
 
+            {/* Step 2: Rekomendasi */}
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/rekomendasi')}
-              className="flex-row items-center justify-between p-3 rounded-2xl bg-[#F9FAFB] border border-gray-100"
+              className="flex-row items-center justify-between p-4 rounded-2xl bg-amber-50/50 border border-amber-100"
             >
               <View className="flex-row items-center flex-1 mr-2">
-                <View className="w-8 h-8 rounded-xl bg-amber-100 items-center justify-center mr-2.5">
-                  <Sparkles size={16} color="#D97706" />
+                <View className="w-8 h-8 rounded-xl bg-amber-500 items-center justify-center mr-3">
+                  <Text className="text-xs font-black text-white">2</Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-xs font-bold text-gray-900">2. Pilih Rekomendasi Tanaman</Text>
-                  <Text className="text-[11px] text-gray-500">Prioritas tanaman hemat biaya tertinggi</Text>
+                  <Text className="text-xs font-bold text-gray-900">Pilih Rekomendasi Komoditas</Text>
+                  <Text className="text-[11px] text-gray-500 font-medium">
+                    Prioritas ranking AI hemat biaya tertinggi
+                  </Text>
                 </View>
               </View>
-              <ChevronRight size={16} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Section: Tugas Hari Ini */}
-        <View className="mb-6">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-lg font-extrabold text-gray-900">
-              Tugas Hari Ini
-            </Text>
-            <Text className="text-xs font-bold text-[#1C7430]">
-              {(isSiramDone ? 1 : 0) + (isPupukDone ? 1 : 0)}/2 Selesai
-            </Text>
-          </View>
-
-          <View className="flex-row space-x-3">
-            {/* Task Card 1: Siram Tanaman */}
-            <TouchableOpacity
-              onPress={handleToggleSiram}
-              activeOpacity={0.8}
-              className={`flex-1 p-4 rounded-2xl border transition-all ${
-                isSiramDone
-                  ? 'bg-green-50/80 border-green-300 shadow-2xs'
-                  : 'bg-white border-gray-100 shadow-xs'
-              }`}
-            >
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="w-10 h-10 rounded-full bg-[#FFEDD5] items-center justify-center">
-                  <Droplets size={20} color="#EA580C" />
-                </View>
-                {isSiramDone ? (
-                  <CheckCircle2 size={22} color="#1C7430" fill="#DCFCE7" />
-                ) : (
-                  <Circle size={22} color="#D1D5DB" />
-                )}
-              </View>
-
-              <Text className="text-sm font-bold text-gray-900">
-                Siram Tanaman
-              </Text>
-              <Text className="text-xs font-medium text-gray-500 mt-0.5">
-                {isSiramDone ? 'Sudah disiram ✅' : 'Pagi / Sore'}
-              </Text>
+              <ChevronRight size={16} color="#D97706" />
             </TouchableOpacity>
 
-            {/* Task Card 2: Beri Pupuk */}
-            <TouchableOpacity
-              onPress={handleTogglePupuk}
-              activeOpacity={0.8}
-              className={`flex-1 p-4 rounded-2xl border transition-all ${
-                isPupukDone
-                  ? 'bg-green-50/80 border-green-300 shadow-2xs'
-                  : 'bg-white border-gray-100 shadow-xs'
-              }`}
-            >
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="w-10 h-10 rounded-full bg-[#FCE7F3] items-center justify-center">
-                  <Sprout size={20} color="#DB2777" />
-                </View>
-                {isPupukDone ? (
-                  <CheckCircle2 size={22} color="#1C7430" fill="#DCFCE7" />
-                ) : (
-                  <Circle size={22} color="#D1D5DB" />
-                )}
-              </View>
-
-              <Text className="text-sm font-bold text-gray-900">
-                Beri Pupuk
-              </Text>
-              <Text className="text-xs font-medium text-gray-500 mt-0.5">
-                {isPupukDone ? 'Sudah dipupuk ✅' : 'Sesuai Siklus'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Section: Tanaman Saya */}
-        <View className="mb-4">
-          <View className="flex-row items-center justify-between mb-3.5">
-            <Text className="text-lg font-extrabold text-gray-900">
-              Tanaman Saya
-            </Text>
+            {/* Step 3: Rawat & Panen */}
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/tracking')}
-              className="flex-row items-center"
+              className="flex-row items-center justify-between p-4 rounded-2xl bg-sky-50/50 border border-sky-100"
             >
-              <Text className="text-xs font-bold text-[#1C7430] mr-1">
-                Lihat Semua ({activeOnlyCrops.length})
+              <View className="flex-row items-center flex-1 mr-2">
+                <View className="w-8 h-8 rounded-xl bg-sky-600 items-center justify-center mr-3">
+                  <Text className="text-xs font-black text-white">3</Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-gray-900">Rawat Harian & Catat Panen</Text>
+                  <Text className="text-[11px] text-gray-500 font-medium">
+                    Checklist siram, pupuk & realisasi hemat
+                  </Text>
+                </View>
+              </View>
+              <ChevronRight size={16} color="#0284C7" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Section: Tugas Hari Ini (Interactive Checklist) */}
+        <View className="mb-5">
+          <View className="flex-row items-center justify-between mb-3">
+            <View>
+              <Text className="text-lg font-black text-gray-900 tracking-tight">
+                Tugas Hari Ini
               </Text>
-              <ChevronRight size={14} color="#1C7430" />
+              <Text className="text-[11px] font-medium text-gray-500">
+                Aktivitas rutin perawatan pekarangan Anda
+              </Text>
+            </View>
+            {activeOnlyCrops.length > 0 && (
+              <View className="bg-emerald-100 px-2.5 py-1 rounded-full">
+                <Text className="text-xs font-black text-emerald-900">
+                  {(isSiramDone ? 1 : 0) + (isPupukDone ? 1 : 0)}/2 Selesai
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {activeOnlyCrops.length === 0 ? (
+            <View className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm shadow-black/5 items-center justify-center">
+              <View className="w-12 h-12 rounded-2xl bg-emerald-50 items-center justify-center mb-2.5">
+                <Droplets size={24} color="#166534" />
+              </View>
+              <Text className="text-sm font-black text-gray-900 text-center">
+                Belum Ada Tugas Perawatan
+              </Text>
+              <Text className="text-xs text-gray-500 text-center mt-1 mb-4 leading-relaxed px-4">
+                Jadwal siram dan pemupukan otomatis aktif setelah Anda menambahkan tanaman aktif dari tab rekomendasi.
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push('/(tabs)/rekomendasi')}
+                activeOpacity={0.85}
+                className="bg-[#124E2A] px-5 py-2.5 rounded-2xl flex-row items-center shadow-xs"
+              >
+                <Plus size={15} color="#FFFFFF" strokeWidth={2.5} />
+                <Text className="text-xs font-bold text-white ml-1.5">
+                  Tanam Komoditas Sekarang
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 14 }} className="flex-row">
+              {/* Task Card 1: Siram Tanaman */}
+              <TouchableOpacity
+                onPress={handleToggleSiram}
+                activeOpacity={0.82}
+                className={`flex-1 p-4 rounded-3xl border transition-all ${
+                  isSiramDone
+                    ? 'bg-emerald-50 border-emerald-300 shadow-2xs'
+                    : 'bg-white border-gray-200/80 shadow-xs'
+                }`}
+              >
+                <View className="flex-row items-center justify-between mb-3">
+                  <View className="w-10 h-10 rounded-2xl bg-orange-100 items-center justify-center">
+                    <Droplets size={20} color="#EA580C" />
+                  </View>
+                  {isSiramDone ? (
+                    <View className="w-6 h-6 rounded-full bg-emerald-600 items-center justify-center">
+                      <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                    </View>
+                  ) : (
+                    <Circle size={22} color="#D1D5DB" strokeWidth={2} />
+                  )}
+                </View>
+
+                <Text className="text-sm font-black text-gray-900">
+                  Siram Tanaman
+                </Text>
+                <Text className="text-xs font-semibold text-gray-500 mt-1">
+                  {isSiramDone ? 'Sudah disiram ✅' : 'Pagi / Sore'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Task Card 2: Beri Pupuk */}
+              <TouchableOpacity
+                onPress={handleTogglePupuk}
+                activeOpacity={0.82}
+                className={`flex-1 p-4 rounded-3xl border transition-all ${
+                  isPupukDone
+                    ? 'bg-emerald-50 border-emerald-300 shadow-2xs'
+                    : 'bg-white border-gray-200/80 shadow-xs'
+                }`}
+              >
+                <View className="flex-row items-center justify-between mb-3">
+                  <View className="w-10 h-10 rounded-2xl bg-pink-100 items-center justify-center">
+                    <Sprout size={20} color="#DB2777" />
+                  </View>
+                  {isPupukDone ? (
+                    <View className="w-6 h-6 rounded-full bg-emerald-600 items-center justify-center">
+                      <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                    </View>
+                  ) : (
+                    <Circle size={22} color="#D1D5DB" strokeWidth={2} />
+                  )}
+                </View>
+
+                <Text className="text-sm font-black text-gray-900">
+                  Beri Pupuk
+                </Text>
+                <Text className="text-xs font-semibold text-gray-500 mt-1">
+                  {isPupukDone ? 'Sudah dipupuk ✅' : 'Sesuai Siklus'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Section: Tanaman Saya (Showcase Cards) */}
+        <View className="mb-4">
+          <View className="flex-row items-center justify-between mb-3">
+            <View>
+              <Text className="text-lg font-black text-gray-900 tracking-tight">
+                Tanaman Saya
+              </Text>
+              <Text className="text-[11px] font-medium text-gray-500">
+                Komoditas aktif di pekarangan Anda
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/tracking')}
+              className="flex-row items-center bg-white px-3 py-1 rounded-full border border-gray-200 shadow-2xs"
+            >
+              <Text className="text-xs font-bold text-emerald-800 mr-1">
+                Semua ({activeOnlyCrops.length})
+              </Text>
+              <ChevronRight size={13} color="#166534" />
             </TouchableOpacity>
           </View>
 
           {/* Plant Cards Grid or Empty State */}
           {activeOnlyCrops.length === 0 ? (
             <View className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm items-center">
-              <View className="w-12 h-12 rounded-2xl bg-green-50 items-center justify-center mb-2.5">
-                <Sprout size={24} color="#1C7430" />
+              <View className="w-12 h-12 rounded-2xl bg-emerald-50 items-center justify-center mb-2.5">
+                <Sprout size={24} color="#166534" />
               </View>
-              <Text className="text-sm font-bold text-gray-900 text-center">
+              <Text className="text-sm font-black text-gray-900 text-center">
                 Belum Ada Tanaman Aktif
               </Text>
-              <Text className="text-xs text-gray-500 text-center mt-1 mb-4">
-                Pilih tanaman dari rekomendasi untuk mulai berkebun di pekarangan Anda.
+              <Text className="text-xs text-gray-500 text-center mt-1 mb-4 px-4 leading-relaxed">
+                Pilih tanaman dari daftar rekomendasi cerdas sesuai sinar matahari lahan Anda.
               </Text>
               <TouchableOpacity
                 onPress={() => router.push('/(tabs)/rekomendasi')}
-                className="flex-row items-center bg-[#1C7430] px-4 py-2.5 rounded-xl shadow-xs"
+                className="flex-row items-center bg-[#124E2A] px-5 py-2.5 rounded-2xl shadow-xs"
               >
                 <Plus size={15} color="#FFFFFF" strokeWidth={2.5} />
                 <Text className="text-xs font-bold text-white ml-1.5">
-                  Tanam Sekarang
+                  Pilih Tanaman Rekomendasi
                 </Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View className="flex-row space-x-3">
+            <View style={{ gap: 14 }} className="flex-row">
               {activeOnlyCrops.slice(0, 2).map((crop) => (
                 <TouchableOpacity
                   key={crop.tanaman_aktif_id}
@@ -366,53 +509,61 @@ export default function DashboardHomeScreen() {
                   activeOpacity={0.9}
                   className="flex-1 bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-xs"
                 >
-                  {/* Image Banner */}
+                  {/* Photo Banner with Badges */}
                   <View className="relative h-32 w-full bg-gray-100">
                     <Image
-                      source={{ uri: crop.image_url }}
+                      source={getCropImageSource(crop.komoditas_nama, crop.image_url)}
                       className="w-full h-full"
                       resizeMode="cover"
                     />
-                    {crop.persentase_hari && crop.persentase_hari >= 70 && (
-                      <View className="absolute top-2.5 right-2.5">
-                        <Badge label="Siap Panen" variant="outline" size="sm" />
+                    {crop.persentase_hari && crop.persentase_hari >= 70 ? (
+                      <View className="absolute top-2.5 right-2.5 bg-amber-500 px-2.5 py-0.5 rounded-full shadow-xs">
+                        <Text className="text-[10px] font-black text-white">
+                          Siap Panen
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="absolute top-2.5 right-2.5 bg-black/50 px-2.5 py-0.5 rounded-full">
+                        <Text className="text-[10px] font-bold text-white">
+                          Hari ke-{crop.hari_ke}
+                        </Text>
                       </View>
                     )}
                   </View>
 
                   {/* Card Details */}
                   <View className="p-4">
-                    <Text className="text-base font-extrabold text-gray-900 capitalize">
+                    <Text className="text-base font-black text-gray-900 capitalize" numberOfLines={1}>
                       {crop.komoditas_nama}
                     </Text>
 
                     {/* Progress Stats */}
-                    <View className="flex-row justify-between items-center mt-2.5 mb-1.5">
+                    <View className="flex-row justify-between items-center mt-2 mb-1">
                       <Text className="text-xs font-semibold text-gray-500">
                         {crop.fase || 'Vegetatif'}
                       </Text>
-                      <Text className="text-xs font-bold text-[#1C7430]">
+                      <Text className="text-xs font-black text-[#124E2A]">
                         {crop.persentase_hari || 50}%
                       </Text>
                     </View>
 
                     {/* Progress Bar */}
-                    <View className="w-full h-2 rounded-full bg-orange-100 overflow-hidden">
+                    <View className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
                       <View
                         style={{ width: `${crop.persentase_hari || 50}%` }}
-                        className="h-full bg-[#1C7430] rounded-full"
+                        className="h-full bg-[#124E2A] rounded-full"
                       />
                     </View>
 
-                    <View className="mt-2.5 flex-row items-center justify-between">
-                      <Text className="text-[10px] text-gray-400 font-medium">
-                        Hari ke-{crop.hari_ke}
+                    <View className="mt-3 flex-row items-center justify-between pt-2 border-t border-gray-100">
+                      <Text className="text-[11px] font-bold text-gray-400">
+                        Pekarangan
                       </Text>
                       <View className="flex-row items-center">
-                        <Text className="text-[10px] font-bold text-[#1C7430] mr-0.5">
+                        <Text className="text-xs font-extrabold text-[#124E2A] mr-0.5">
                           Rawat
                         </Text>
-                        <ArrowRight size={10} color="#1C7430" />
+                        <ArrowRight size={12} color="#124E2A" />
                       </View>
                     </View>
                   </View>

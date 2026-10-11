@@ -5,12 +5,13 @@ import {
   TouchableOpacity,
   Dimensions,
   FlatList,
+  Image,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Leaf, Trees, ChevronLeft } from 'lucide-react-native';
+import { Leaf, ChevronLeft } from 'lucide-react-native';
 import { Button } from '../components/ui/Button';
 import { useApp } from '../context/AppContext';
 
@@ -22,7 +23,7 @@ const ONBOARDING_STEPS = [
     title: 'Bertani di Halaman\nSendiri',
     description:
       'Manfaatkan lahan terbatas untuk menanam sayuran segar dan sehat langsung dari rumah Anda.',
-    illustrationType: 'garden',
+    image: require('../../assets/images/onboarding/onboarding1.png'),
     badgeText: 'SMART URBAN GARDEN',
   },
   {
@@ -30,7 +31,7 @@ const ONBOARDING_STEPS = [
     title: 'Hemat Biaya Dapur',
     description:
       'Kurangi pengeluaran belanja harian dengan memanen hasil kebun sendiri. Lebih hemat, lebih segar.',
-    illustrationType: 'growth',
+    image: require('../../assets/images/onboarding/onboarding2.png'),
     badgeText: 'FINANCIAL GROWTH',
   },
   {
@@ -38,7 +39,7 @@ const ONBOARDING_STEPS = [
     title: 'Hijaukan Kota Kita',
     description:
       'Setiap tanaman berkontribusi pada lingkungan yang lebih bersih dan udara yang lebih segar bagi semua.',
-    illustrationType: 'city',
+    image: require('../../assets/images/onboarding/onboarding3.png'),
     badgeText: 'ECO-FUTURE CITIES',
     badgeSub: 'ENVIRONMENTAL IMPACT',
   },
@@ -92,64 +93,13 @@ export default function OnboardingScreen() {
       style={{ width: SCREEN_WIDTH }}
       className="px-6 justify-center items-center py-4"
     >
-      {/* Illustration Card Container with spacious layout */}
-      <View className="w-full max-w-[340px] aspect-square rounded-3xl bg-[#F4F6F4] items-center justify-center p-8 border border-gray-100 shadow-sm shadow-black/5 mb-6">
-        {item.illustrationType === 'garden' && (
-          <View className="items-center justify-center">
-            <View className="w-48 h-48 rounded-2xl bg-white/90 items-center justify-center border border-green-100 shadow-sm p-4">
-              <Trees size={68} color="#1C7430" />
-              <View className="flex-row mt-4 space-x-3">
-                <View className="w-10 h-7 bg-green-100 rounded-lg items-center justify-center">
-                  <Leaf size={15} color="#1C7430" />
-                </View>
-                <View className="w-10 h-7 bg-green-100 rounded-lg items-center justify-center">
-                  <Leaf size={15} color="#1C7430" />
-                </View>
-              </View>
-            </View>
-            <Text className="text-[10px] font-bold text-green-800 uppercase tracking-widest mt-4">
-              {item.badgeText}
-            </Text>
-          </View>
-        )}
-
-        {item.illustrationType === 'growth' && (
-          <View className="items-center justify-center">
-            <View className="w-44 h-44 rounded-full bg-[#E8F5E9] items-center justify-center border-4 border-white shadow-sm">
-              <View className="w-28 h-28 rounded-full bg-[#C8E6C9] items-center justify-center shadow-inner">
-                <Leaf size={52} color="#1C7430" fill="#1C7430" />
-              </View>
-            </View>
-            <Text className="text-xs font-bold text-[#1C7430] uppercase tracking-wider mt-5">
-              {item.badgeText}
-            </Text>
-          </View>
-        )}
-
-        {item.illustrationType === 'city' && (
-          <View className="items-center justify-center">
-            <View className="w-48 h-44 rounded-2xl bg-white/90 items-center justify-center border border-green-100 p-4 shadow-sm">
-              <View className="items-center justify-center">
-                <Trees size={58} color="#1C7430" />
-                <View className="flex-row items-center mt-3 space-x-2">
-                  <View className="w-7 h-11 bg-gray-200 rounded-t-md" />
-                  <View className="w-10 h-16 bg-green-700 rounded-t-md items-center justify-center">
-                    <Leaf size={14} color="#FFFFFF" />
-                  </View>
-                  <View className="w-7 h-12 bg-gray-300 rounded-t-md" />
-                </View>
-              </View>
-            </View>
-            <Text className="text-xs font-bold text-gray-900 uppercase tracking-wider mt-4">
-              {item.badgeText}
-            </Text>
-            {item.badgeSub && (
-              <Text className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mt-0.5">
-                {item.badgeSub}
-              </Text>
-            )}
-          </View>
-        )}
+      {/* Illustration Card Container with real onboarding images */}
+      <View className="w-full max-w-[340px] aspect-square rounded-3xl bg-white items-center justify-center p-6 border border-gray-100 shadow-sm shadow-black/5 mb-6 overflow-hidden">
+        <Image
+          source={item.image}
+          className="w-full h-full"
+          resizeMode="contain"
+        />
       </View>
 
       {/* Text Content */}
