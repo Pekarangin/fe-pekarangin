@@ -29,6 +29,7 @@ import {
   Compass,
   Landmark,
   Sparkles,
+  AlertCircle,
 } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
@@ -106,10 +107,37 @@ export default function RegisterScreen() {
   });
   const [selectedRegency, setSelectedRegency] = useState<WilayahItem | null>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<WilayahItem | null>(null);
+  const [wilayahError, setWilayahError] = useState<string | null>(null);
+
+  const retryCurrentLevel = async () => {
+    setWilayahError(null);
+    setLoadingWilayah(true);
+    try {
+      if (wilayahLevel === 'PROVINSI') {
+        const list = await wilayahService.getProvinces();
+        setProvinces(list);
+      } else if (wilayahLevel === 'KOTA') {
+        const data = await wilayahService.getRegencies(selectedProvince.id);
+        setRegencies(data);
+      } else if (wilayahLevel === 'KECAMATAN' && selectedRegency) {
+        const data = await wilayahService.getDistricts(selectedRegency.id);
+        setDistricts(data);
+      } else if (wilayahLevel === 'KELURAHAN' && selectedDistrict) {
+        const data = await wilayahService.getVillages(selectedDistrict.id);
+        setVillages(data);
+      }
+    } catch (err: any) {
+      console.warn('Gagal retry wilayah:', err);
+      setWilayahError('Gagal memuat data wilayah. Silakan periksa koneksi internet.');
+    } finally {
+      setLoadingWilayah(false);
+    }
+  };
 
   const openWilayahPicker = async () => {
     setWilayahModalVisible(true);
     setSearchQuery('');
+    setWilayahError(null);
     if (regencies.length === 0) {
       setLoadingWilayah(true);
       try {
@@ -118,6 +146,7 @@ export default function RegisterScreen() {
         setWilayahLevel('KOTA');
       } catch (err: any) {
         console.warn('Gagal load regencies DIY:', err);
+        setWilayahError('Gagal memuat data kota/kabupaten. Silakan coba lagi.');
       } finally {
         setLoadingWilayah(false);
       }
@@ -129,6 +158,7 @@ export default function RegisterScreen() {
     setSelectedRegency(null);
     setSelectedDistrict(null);
     setSearchQuery('');
+    setWilayahError(null);
     setLoadingWilayah(true);
     try {
       const data = await wilayahService.getRegencies(prov.id);
@@ -136,6 +166,7 @@ export default function RegisterScreen() {
       setWilayahLevel('KOTA');
     } catch (err) {
       console.warn('Gagal ambil kabupaten:', err);
+      setWilayahError('Gagal mengambil daftar kota/kabupaten.');
     } finally {
       setLoadingWilayah(false);
     }
@@ -145,6 +176,7 @@ export default function RegisterScreen() {
     setSelectedRegency(reg);
     setSelectedDistrict(null);
     setSearchQuery('');
+    setWilayahError(null);
     setLoadingWilayah(true);
     try {
       const data = await wilayahService.getDistricts(reg.id);
@@ -152,6 +184,7 @@ export default function RegisterScreen() {
       setWilayahLevel('KECAMATAN');
     } catch (err) {
       console.warn('Gagal ambil kecamatan:', err);
+      setWilayahError('Gagal mengambil daftar kecamatan.');
     } finally {
       setLoadingWilayah(false);
     }
@@ -160,6 +193,7 @@ export default function RegisterScreen() {
   const handleSelectDistrict = async (dist: WilayahItem) => {
     setSelectedDistrict(dist);
     setSearchQuery('');
+    setWilayahError(null);
     setLoadingWilayah(true);
     try {
       const data = await wilayahService.getVillages(dist.id);
@@ -167,6 +201,7 @@ export default function RegisterScreen() {
       setWilayahLevel('KELURAHAN');
     } catch (err) {
       console.warn('Gagal ambil kelurahan:', err);
+      setWilayahError('Gagal mengambil daftar kelurahan/desa.');
     } finally {
       setLoadingWilayah(false);
     }
@@ -294,7 +329,7 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       await register(nama.trim(), email.trim().toLowerCase(), password, wilayah);
-      router.replace('/(tabs)');
+      router.replace('/setup-wizard');
     } catch (e: any) {
       console.error(e);
       const msg = e?.message || 'Gagal mendaftar. Silakan coba kembali.';
@@ -730,27 +765,49 @@ export default function RegisterScreen() {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: 24 }}
                 ListEmptyComponent={
-                  <View className="items-center py-12 px-4">
-                    <View className="w-12 h-12 rounded-2xl bg-gray-100 items-center justify-center mb-3">
-                      <Search size={24} color="#9CA3AF" />
-                    </View>
-                    <Text className="text-sm font-bold text-gray-800">
-                      Wilayah tidak ditemukan
-                    </Text>
-                    <Text className="text-xs text-gray-500 text-center mt-1">
-                      Coba periksa ejaan atau hapus filter pencarian.
-                    </Text>
-                    {searchQuery.length > 0 && (
+                  wilayahError ? (
+                    <View className="items-center py-12 px-4">
+                      <View className="w-12 h-12 rounded-2xl bg-red-50 items-center justify-center mb-3">
+                        <AlertCircle size={24} color="#DC2626" />
+                      </View>
+                      <Text className="text-sm font-bold text-gray-800 text-center">
+                        Gagal Memuat Data Wilayah
+                      </Text>
+                      <Text className="text-xs text-gray-500 text-center mt-1 max-w-xs">
+                        {wilayahError}
+                      </Text>
                       <TouchableOpacity
-                        onPress={() => setSearchQuery('')}
-                        className="mt-3 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl"
+                        onPress={retryCurrentLevel}
+                        className="mt-4 bg-[#1C7430] px-4 py-2.5 rounded-xl shadow-xs"
                       >
-                        <Text className="text-xs font-bold text-[#1C7430]">
-                          Reset Pencarian
+                        <Text className="text-xs font-bold text-white">
+                          Coba Muat Ulang
                         </Text>
                       </TouchableOpacity>
-                    )}
-                  </View>
+                    </View>
+                  ) : (
+                    <View className="items-center py-12 px-4">
+                      <View className="w-12 h-12 rounded-2xl bg-gray-100 items-center justify-center mb-3">
+                        <Search size={24} color="#9CA3AF" />
+                      </View>
+                      <Text className="text-sm font-bold text-gray-800">
+                        Wilayah tidak ditemukan
+                      </Text>
+                      <Text className="text-xs text-gray-500 text-center mt-1">
+                        Coba periksa ejaan atau hapus filter pencarian.
+                      </Text>
+                      {searchQuery.length > 0 && (
+                        <TouchableOpacity
+                          onPress={() => setSearchQuery('')}
+                          className="mt-3 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl"
+                        >
+                          <Text className="text-xs font-bold text-[#1C7430]">
+                            Reset Pencarian
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )
                 }
                 renderItem={({ item }) => {
                   const IconComponent =

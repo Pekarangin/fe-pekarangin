@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { User, Lahan, TanamanAktif, RekomendasiItem, UserStats, CatatanHarian } from '../types';
+import { User, Lahan, TanamanAktif, RekomendasiItem, UserStats, CatatanHarian, KesesuaianSinar, TingkatKesulitan } from '../types';
 import {
   ReminderSchedule,
   DEFAULT_REMINDERS,
@@ -51,6 +51,9 @@ interface AppContextType {
   
   // Rekomendasi state
   rekomendasiList: RekomendasiItem[];
+  isLoadingRekomendasi: boolean;
+  rekomendasiError: string | null;
+  refreshRekomendasi: () => Promise<void>;
   
   // Stats
   stats: UserStats;
@@ -69,144 +72,6 @@ interface AppContextType {
 }
 
 
-const INITIAL_REKOMENDASI: RekomendasiItem[] = [
-  {
-    komoditas_id: 'kom-1',
-    nama: 'Cabai Rawit',
-    skor_prioritas: 4.8,
-    estimasi_hemat_rp_per_bulan: 45000,
-    waktu_panen_hari: 75,
-    luas_dibutuhkan_m2: 0.16,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 52000,
-    konsumsi_rt_kg_per_bulan: 0.8,
-    image_url: 'https://images.unsplash.com/photo-1588252303782-cb80119abd6d?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Tanam di area terpapar sinar penuh >6 jam. Gunakan pot/polybag 30cm dengan campuran tanah subur & kompos 2:1.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 14,
-    media_tanam: 'Polybag / Pot 30cm / Tanah Bedengan',
-  },
-  {
-    komoditas_id: 'kom-8',
-    nama: 'Sawi Hijau',
-    skor_prioritas: 4.2,
-    estimasi_hemat_rp_per_bulan: 35000,
-    waktu_panen_hari: 30,
-    luas_dibutuhkan_m2: 0.25,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 14000,
-    konsumsi_rt_kg_per_bulan: 2.5,
-    image_url: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Pertumbuhan sangat cepat. Siram rutin setiap pagi & sore. Sangat cocok ditanam bertingkat (vertikultur).',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 7,
-    media_tanam: 'Tray Semai, Pot Persegi, Hidroponik Sederhana',
-  },
-  {
-    komoditas_id: 'kom-4',
-    nama: 'Tomat Cherry',
-    skor_prioritas: 3.9,
-    estimasi_hemat_rp_per_bulan: 40000,
-    waktu_panen_hari: 60,
-    luas_dibutuhkan_m2: 0.35,
-    tingkat_kesulitan: 'SEDANG',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 28000,
-    konsumsi_rt_kg_per_bulan: 1.5,
-    image_url: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Pasang ajir/penyangga bambu saat tanaman mencapai 20cm. Berikan pupuk kalium saat mulai berbunga.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 10,
-    media_tanam: 'Pot Besar 35cm / Polybag',
-  },
-  {
-    komoditas_id: 'kom-5',
-    nama: 'Bayam Hijau',
-    skor_prioritas: 3.6,
-    estimasi_hemat_rp_per_bulan: 20000,
-    waktu_panen_hari: 25,
-    luas_dibutuhkan_m2: 0.25,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 10000,
-    konsumsi_rt_kg_per_bulan: 2.0,
-    image_url: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Tabur benih merata. Jaga kelembapan tanah agar kecambah cepat tumbuh. Panen cabut umur 25 hari.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 7,
-    media_tanam: 'Bedengan / Polybag Lebar',
-  },
-  {
-    komoditas_id: 'kom-6',
-    nama: 'Kangkung Darat',
-    skor_prioritas: 3.5,
-    estimasi_hemat_rp_per_bulan: 18000,
-    waktu_panen_hari: 25,
-    luas_dibutuhkan_m2: 0.25,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 12000,
-    konsumsi_rt_kg_per_bulan: 1.5,
-    image_url: 'https://images.unsplash.com/photo-1628771065518-0d82f1938462?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Sangat tangguh dan tahan cuaca panas. Bisa dipanen potong batang agar bertunas kembali hingga 3x panen.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 7,
-    media_tanam: 'Pot, Baskom Bekas, Bedengan',
-  },
-  {
-    komoditas_id: 'kom-3',
-    nama: 'Bawang Merah',
-    skor_prioritas: 3.4,
-    estimasi_hemat_rp_per_bulan: 32000,
-    waktu_panen_hari: 65,
-    luas_dibutuhkan_m2: 0.25,
-    tingkat_kesulitan: 'SEDANG',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 40000,
-    konsumsi_rt_kg_per_bulan: 1.0,
-    image_url: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Potong 1/3 ujung umbi sebelum tanam untuk percepat tunas. Hindari genangan air berlebih.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 14,
-    media_tanam: 'Polybag Tanah Gembur Berpasir',
-  },
-  {
-    komoditas_id: 'kom-14',
-    nama: 'Kemangi',
-    skor_prioritas: 3.2,
-    estimasi_hemat_rp_per_bulan: 15000,
-    waktu_panen_hari: 35,
-    luas_dibutuhkan_m2: 0.2,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 18000,
-    konsumsi_rt_kg_per_bulan: 0.6,
-    image_url: 'https://images.unsplash.com/photo-1608686207856-001b95cf60ca?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Petik pucuk daun secara berkala agar tanaman semakin rimbun dan tidak cepat berbunga tua.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 14,
-    media_tanam: 'Pot Kecil / Pekarangan Sudut',
-  },
-  {
-    komoditas_id: 'kom-10',
-    nama: 'Terong Ungu',
-    skor_prioritas: 3.0,
-    estimasi_hemat_rp_per_bulan: 25000,
-    waktu_panen_hari: 80,
-    luas_dibutuhkan_m2: 0.5,
-    tingkat_kesulitan: 'SEDANG',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 15000,
-    konsumsi_rt_kg_per_bulan: 1.5,
-    image_url: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Butuh media tanah yang dalam dan kaya pupuk kandang. Lindungi dari hama kutu kebul.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 14,
-    media_tanam: 'Polybag Besar 40cm / Tanah Terbuka',
-  }
-];
 
 const EMPTY_STATS: UserStats = {
   total_panen_kg: 0,
@@ -232,7 +97,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [lahans, setLahans] = useState<Lahan[]>([]);
   const [activeLahan, setActiveLahan] = useState<Lahan | null>(null);
   const [activeCrops, setActiveCrops] = useState<TanamanAktif[]>([]);
-  const [rekomendasiList, setRekomendasiList] = useState<RekomendasiItem[]>(INITIAL_REKOMENDASI);
+  const [rekomendasiList, setRekomendasiList] = useState<RekomendasiItem[]>([]);
+  const [isLoadingRekomendasi, setIsLoadingRekomendasi] = useState<boolean>(true);
+  const [rekomendasiError, setRekomendasiError] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats>(EMPTY_STATS);
   const [catatanHistory] = useState<Record<string, CatatanHarian[]>>({});
   const [reminders, setReminders] = useState<ReminderSchedule[]>(DEFAULT_REMINDERS);
@@ -332,53 +199,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [fetchRemoteUserData]);
 
+  const fetchRekomendasiData = useCallback(async (): Promise<RekomendasiItem[] | null> => {
+    if (activeLahan?.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
+      const res = await rekomendasiService.getByLahanId(activeLahan.lahan_id);
+      if (res?.rekomendasi && res.rekomendasi.length > 0) {
+        return res.rekomendasi.map(item => ({
+          ...item,
+          image_url: item.image_url || getCropImage(item.nama),
+        }));
+      }
+      return null;
+    }
+    const data = await rekomendasiService.getAllKomoditas();
+    if (Array.isArray(data) && data.length > 0) {
+      const detailedList = await Promise.allSettled(
+        data.map(k => rekomendasiService.getKomoditasById(k.komoditas_id || (k as any).id))
+      );
+
+      return data.map((k: any, idx: number) => {
+        const detailSettled = detailedList[idx];
+        const detail = detailSettled.status === 'fulfilled' ? detailSettled.value : null;
+        const hargaPasar = detail?.harga_terkini?.harga_rp_per_kg || 25000;
+        const konsumsiRt = Number(k.konsumsi_rt_kg_per_bulan || k.konsumsiRtKgPerBulan || 1);
+        const estimasiHemat = Math.round(konsumsiRt * hargaPasar);
+
+        return {
+          komoditas_id: k.komoditas_id || k.id,
+          nama: k.nama,
+          skor_prioritas: Number(Math.max(3.5, 5 - idx * 0.1).toFixed(1)),
+          estimasi_hemat_rp_per_bulan: estimasiHemat,
+          waktu_panen_hari: k.waktu_panen_hari || k.waktuPanenHari || 45,
+          luas_dibutuhkan_m2: Number(k.luas_min_m2 || k.luasMinM2 || 0.25),
+          tingkat_kesulitan: (k.tingkat_kesulitan || k.tingkatKesulitan || 'MUDAH') as TingkatKesulitan,
+          kesesuaian_sinar: 'COCOK' as KesesuaianSinar,
+          harga_pasar_per_kg: hargaPasar,
+          konsumsi_rt_kg_per_bulan: konsumsiRt,
+          image_url: k.image_url || detail?.image_url || '',
+          panduan_singkat: k.panduan_singkat || detail?.panduan_singkat || 'Cocok ditanam di pekarangan rumah.',
+          jadwal_siram_hari: k.jadwal_siram_hari || detail?.jadwal_siram_hari || 1,
+          jadwal_pupuk_hari: k.jadwal_pupuk_hari || detail?.jadwal_pupuk_hari || 14,
+          media_tanam: 'Pot / Polybag / Bedengan',
+        };
+      });
+    }
+    return null;
+  }, [activeLahan]);
+
+  const refreshRekomendasi = useCallback(async () => {
+    setIsLoadingRekomendasi(true);
+    setRekomendasiError(null);
+    try {
+      const result = await fetchRekomendasiData();
+      if (result && result.length > 0) {
+        setRekomendasiList(result);
+        setRekomendasiError(null);
+      } else {
+        setRekomendasiList([]);
+      }
+    } catch (err: any) {
+      console.warn('Gagal ambil rekomendasi dari BE:', err);
+      setRekomendasiError(err?.message || 'Gagal memuat data dari server');
+    } finally {
+      setIsLoadingRekomendasi(false);
+    }
+  }, [fetchRekomendasiData]);
+
   // Auto-fetch remote recommendations when activeLahan changes, or load public commodities catalog
   useEffect(() => {
-    if (activeLahan?.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
-      rekomendasiService
-        .getByLahanId(activeLahan.lahan_id)
-        .then(res => {
-          if (res?.rekomendasi && res.rekomendasi.length > 0) {
-            const mapped = res.rekomendasi.map(item => ({
-              ...item,
-              image_url: item.image_url || getCropImage(item.nama),
-            }));
-            setRekomendasiList(mapped);
+    let isMounted = true;
+    fetchRekomendasiData()
+      .then(result => {
+        if (isMounted) {
+          if (result && result.length > 0) {
+            setRekomendasiList(result);
+            setRekomendasiError(null);
+          } else {
+            setRekomendasiList([]);
           }
-        })
-        .catch(err => {
-          console.warn('Gagal ambil rekomendasi dari BE, gunakan fallback lokal:', err);
-        });
-    } else {
-      rekomendasiService
-        .getAllKomoditas()
-        .then(data => {
-          if (Array.isArray(data) && data.length > 0) {
-            const mappedCatalog: RekomendasiItem[] = data.map((k: any, idx: number) => ({
-              komoditas_id: k.komoditas_id || k.id,
-              nama: k.nama,
-              skor_prioritas: Number(Math.max(3.5, 5 - idx * 0.1).toFixed(1)),
-              estimasi_hemat_rp_per_bulan: Math.round(Number(k.konsumsi_rt_kg_per_bulan || k.konsumsiRtKgPerBulan || 1) * 25000),
-              waktu_panen_hari: k.waktu_panen_hari || k.waktuPanenHari || 45,
-              luas_dibutuhkan_m2: Number(k.luas_min_m2 || k.luasMinM2 || 0.25),
-              tingkat_kesulitan: k.tingkat_kesulitan || k.tingkatKesulitan || 'MUDAH',
-              kesesuaian_sinar: 'COCOK',
-              harga_pasar_per_kg: 25000,
-              konsumsi_rt_kg_per_bulan: Number(k.konsumsi_rt_kg_per_bulan || k.konsumsiRtKgPerBulan || 1),
-              image_url: getCropImage(k.nama),
-              panduan_singkat: k.panduan_singkat || k.panduanSingkat || 'Cocok ditanam di pekarangan rumah.',
-              jadwal_siram_hari: k.jadwal_siram_hari || k.jadwalSiramHari || 1,
-              jadwal_pupuk_hari: k.jadwal_pupuk_hari || k.jadwalPupukHari || 14,
-              media_tanam: 'Pot / Polybag / Bedengan',
-            }));
-            setRekomendasiList(mappedCatalog);
-          }
-        })
-        .catch(err => {
-          console.warn('Gagal ambil katalog komoditas publik dari BE:', err);
-        });
-    }
-  }, [activeLahan?.lahan_id, activeLahan?.paparan_sinar, activeLahan?.luas_m2]);
+        }
+      })
+      .catch((err: any) => {
+        console.warn('Gagal sinkron rekomendasi awal:', err);
+        if (isMounted) {
+          setRekomendasiError(err?.message || 'Gagal memuat data dari server');
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingRekomendasi(false);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchRekomendasiData]);
 
   const updateReminderTime = async (id: string, hour: number, minute: number) => {
     setReminders(prev =>
@@ -869,6 +783,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordPanen,
         recordGagal,
         rekomendasiList,
+        isLoadingRekomendasi,
+        rekomendasiError,
+        refreshRekomendasi,
         stats,
         catatanHistory,
         reminders,

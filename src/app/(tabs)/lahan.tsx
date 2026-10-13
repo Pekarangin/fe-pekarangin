@@ -665,7 +665,7 @@ export default function LahanTab() {
                   </Text>
                 </View>
               ) : (
-                <View className="flex-row space-x-2 mb-4">
+                <View className="flex-row mb-4" style={{ gap: 12 }}>
                   <TouchableOpacity
                     onPress={handleTakePhoto}
                     className="flex-1 bg-green-50 border border-green-200 py-3 rounded-xl items-center justify-center flex-row"
@@ -707,7 +707,7 @@ export default function LahanTab() {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <View className="flex-row space-x-2">
+                <View className="flex-row" style={{ gap: 12 }}>
                   <TouchableOpacity
                     onPress={handleTakePhoto}
                     disabled={aiAnalyzing}

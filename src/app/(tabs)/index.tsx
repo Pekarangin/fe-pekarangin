@@ -5,8 +5,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   MapPin,
@@ -21,6 +22,7 @@ import {
   Plus,
   ArrowRight,
   Check,
+  Bot,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { Badge } from '../../components/ui/Badge';
@@ -30,9 +32,11 @@ import { fetchLiveWeather, RealWeather } from '../../services/weather';
 export default function DashboardHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { welcome } = useLocalSearchParams<{ welcome?: string }>();
   const {
     user,
     stats,
+    lahans,
     activeCrops,
     activeLahan,
     toggleAllSiram,
@@ -40,6 +44,7 @@ export default function DashboardHomeScreen() {
   } = useApp();
 
   const [weather, setWeather] = useState<RealWeather | null>(null);
+  const [showWelcomeTour, setShowWelcomeTour] = useState(() => welcome === 'true');
 
   const activeOnlyCrops = activeCrops.filter(c => c.status === 'AKTIF');
   const isSiramDone =
@@ -153,6 +158,33 @@ export default function DashboardHomeScreen() {
             Pekarangan pangan mandiri Anda siap dipantau hari ini.
           </Text>
         </View>
+
+        {/* Wizard Launcher Banner jika belum punya lahan */}
+        {!activeLahan && lahans.length === 0 && (
+          <TouchableOpacity
+            onPress={() => router.push('/setup-wizard')}
+            activeOpacity={0.9}
+            className="bg-emerald-900 rounded-3xl p-5 mb-5 border border-emerald-700/60 shadow-md shadow-emerald-950/20 flex-row items-center justify-between"
+          >
+            <View className="flex-1 mr-3">
+              <View className="flex-row items-center mb-1">
+                <Sparkles size={14} color="#4ADE80" />
+                <Text className="text-xs font-black text-emerald-200 ml-1.5 uppercase tracking-wide">
+                  Setup Pekarangan Pertama
+                </Text>
+              </View>
+              <Text className="text-base font-black text-white">
+                Mulai Setup 1 Menit & Tanam Sekarang
+              </Text>
+              <Text className="text-xs text-emerald-100/80 mt-1 leading-relaxed">
+                Tentukan ukuran lahan & sinar matahari untuk langsung membuka rekomendasi top 3 tanaman AI.
+              </Text>
+            </View>
+            <View className="w-10 h-10 rounded-2xl bg-emerald-500 items-center justify-center shadow-xs">
+              <ArrowRight size={18} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Hero Green Stats Card (Modern Deep Emerald) */}
         <TouchableOpacity
@@ -573,6 +605,124 @@ export default function DashboardHomeScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Floating Action Button - Simple Circular AI Agent */}
+      <TouchableOpacity
+        onPress={() => router.push('/konsultasi')}
+        activeOpacity={0.85}
+        style={{
+          position: 'absolute',
+          bottom: 24,
+          right: 20,
+          elevation: 8,
+          shadowColor: '#124E2A',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+        }}
+        className="w-14 h-14 rounded-full bg-[#124E2A] items-center justify-center border border-emerald-300/40"
+      >
+        <Bot size={24} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      {/* Modal Welcome Guide - Fase 2 Dashboard Hidup */}
+      <Modal
+        visible={showWelcomeTour}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowWelcomeTour(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-center items-center px-5">
+          <View className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl">
+            {/* Header */}
+            <View className="items-center mb-4">
+              <View className="w-14 h-14 rounded-2xl bg-emerald-100 items-center justify-center mb-2.5">
+                <Sparkles size={28} color="#124E2A" />
+              </View>
+              <View className="bg-[#124E2A] px-3 py-1 rounded-full mb-1.5">
+                <Text className="text-[10px] font-black text-white uppercase tracking-wider">
+                  Fase 2: Dashboard Siap
+                </Text>
+              </View>
+              <Text className="text-lg font-black text-gray-900 text-center">
+                Pekarangan Pertama Anda Sudah Hidup! 🌱
+              </Text>
+              <Text className="text-xs text-gray-500 text-center mt-1">
+                Berikut 4 fitur utama yang siap mendampingi Anda setiap hari:
+              </Text>
+            </View>
+
+            {/* 4 Feature Guide Items from Flowchart */}
+            <View style={{ gap: 10 }} className="mb-5">
+              <View className="flex-row items-start bg-gray-50 p-2.5 rounded-2xl border border-gray-100">
+                <View className="w-7 h-7 rounded-xl bg-emerald-100 items-center justify-center mr-2.5 mt-0.5">
+                  <Sprout size={14} color="#124E2A" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-gray-900">
+                    1. Status Tanaman Hari ke-1
+                  </Text>
+                  <Text className="text-[11px] text-gray-500 leading-tight">
+                    Komoditas aktif langsung muncul dengan estimasi panen & fase bibit.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-start bg-gray-50 p-2.5 rounded-2xl border border-gray-100">
+                <View className="w-7 h-7 rounded-xl bg-amber-100 items-center justify-center mr-2.5 mt-0.5">
+                  <Sun size={14} color="#D97706" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-gray-900">
+                    2. Cuaca & Kondisi Lahan
+                  </Text>
+                  <Text className="text-[11px] text-gray-500 leading-tight">
+                    Suhu & cuaca wilayah Anda terpantau otomatis untuk panduan siram.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-start bg-gray-50 p-2.5 rounded-2xl border border-gray-100">
+                <View className="w-7 h-7 rounded-xl bg-blue-100 items-center justify-center mr-2.5 mt-0.5">
+                  <Droplets size={14} color="#2563EB" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-gray-900">
+                    3. Tugas Checklist Siram Hari ke-1
+                  </Text>
+                  <Text className="text-[11px] text-gray-500 leading-tight">
+                    Centang checklist harian sekali klik untuk menjaga streak kebun Anda.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-start bg-gray-50 p-2.5 rounded-2xl border border-gray-100">
+                <View className="w-7 h-7 rounded-xl bg-emerald-800 items-center justify-center mr-2.5 mt-0.5">
+                  <Bot size={14} color="#FFFFFF" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-gray-900">
+                    4. Tanya Pekarang AI (FAB)
+                  </Text>
+                  <Text className="text-[11px] text-gray-500 leading-tight">
+                    Tombol bot di kanan bawah siap menjawab kendala hama & pupuk kapan saja.
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Close / Action Button */}
+            <TouchableOpacity
+              onPress={() => setShowWelcomeTour(false)}
+              className="w-full bg-[#124E2A] py-3.5 rounded-2xl items-center justify-center shadow-xs"
+            >
+              <Text className="text-xs font-black text-white">
+                Siap, Mulai Rawat Pekarangan!
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
