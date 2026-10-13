@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,8 +22,10 @@ import {
   Sprout,
   AlertCircle,
   HelpCircle,
+  Clock,
 } from 'lucide-react-native';
 import { useApp } from '../context/AppContext';
+import { chatStorage } from '../services/api/storage';
 
 interface ChatMessage {
   id: string;
@@ -64,14 +67,20 @@ export default function KonsultasiScreen() {
 
   const activeOnlyCrops = activeCrops.filter(c => c.status === 'AKTIF');
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    return chatStorage.get(user?.user_id);
+  });
+
+  // Dynamically computed welcome message with the current user's name
+  const allMessages: ChatMessage[] = [
     {
       id: 'welcome',
       sender: 'agent',
       text: `Halo ${user?.nama || 'Sobat Pekarang'}! 🌱 Saya Agen Agronomis AI Pekarangin. Anda bisa berkonsultasi seputar perawatan tanaman, jadwal siram & pupuk, penanganan hama, atau strategi mengoptimalkan panen di pekarangan rumah Anda. Apa yang ingin ditanyakan hari ini?`,
       timestamp: 'Baru saja',
     },
-  ]);
+    ...messages,
+  ];
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -81,7 +90,7 @@ export default function KonsultasiScreen() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading]);
+  }, [messages.length, isLoading]);
 
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || inputText).trim();
@@ -94,7 +103,11 @@ export default function KonsultasiScreen() {
       timestamp: getFormattedTime(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages(prev => {
+      const next = [...prev, userMessage];
+      chatStorage.set(next, user?.user_id);
+      return next;
+    });
     setInputText('');
     setIsLoading(true);
 
@@ -109,7 +122,11 @@ export default function KonsultasiScreen() {
         timestamp: getFormattedTime(),
       };
 
-      setMessages(prev => [...prev, agentReply]);
+      setMessages(prev => {
+        const next = [...prev, agentReply];
+        chatStorage.set(next, user?.user_id);
+        return next;
+      });
     } catch (err: any) {
       console.warn('Gagal kirim pesan ke agent API:', err);
 
@@ -122,21 +139,32 @@ export default function KonsultasiScreen() {
         isError: true,
       };
 
-      setMessages(prev => [...prev, fallbackReply]);
+      setMessages(prev => {
+        const next = [...prev, fallbackReply];
+        chatStorage.set(next, user?.user_id);
+        return next;
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleResetChat = () => {
-    setMessages([
-      {
-        id: generateMessageId('welcome'),
-        sender: 'agent',
-        text: `Percakapan telah direset. Silakan tanyakan hal lain seputar budidaya tanaman pekarangan Anda! 🌿`,
-        timestamp: getFormattedTime(),
-      },
-    ]);
+    Alert.alert(
+      'Hapus Riwayat Chat',
+      'Apakah Anda ingin mereset dan menghapus riwayat percakapan?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            chatStorage.clear(user?.user_id);
+            setMessages([]);
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -164,8 +192,14 @@ export default function KonsultasiScreen() {
             <View className="flex-row items-center mt-0.5">
               <Sparkles size={11} color="#16A34A" />
               <Text className="text-[11px] font-semibold text-emerald-700 ml-1">
-                Online • API Terhubung
+                Online
               </Text>
+              <View className="flex-row items-center ml-2 pl-2 border-l border-gray-200">
+                <Clock size={10} color="#6B7280" />
+                <Text className="text-[10px] font-medium text-gray-400 ml-1">
+                  Riwayat 24 Jam
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -242,7 +276,7 @@ export default function KonsultasiScreen() {
         showsVerticalScrollIndicator={false}
         className="flex-1"
       >
-        {messages.map(msg => {
+        {allMessages.map(msg => {
           const isUser = msg.sender === 'user';
           return (
             <View

@@ -77,7 +77,9 @@ export default function RegisterScreen() {
     if (googleResponse?.type === 'success' && googleResponse.params?.id_token) {
       const idToken = googleResponse.params.id_token;
       loginWithGoogle(idToken)
-        .then(() => router.replace('/(tabs)'))
+        .then(() => {
+          router.replace('/(tabs)?welcome=true');
+        })
         .catch((err: any) => {
           const msg = err?.message || 'Registrasi dengan akun Google gagal di server.';
           setErrorMsg(msg);
@@ -329,7 +331,7 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       await register(nama.trim(), email.trim().toLowerCase(), password, wilayah);
-      router.replace('/setup-wizard');
+      router.replace('/(tabs)?welcome=true');
     } catch (e: any) {
       console.error(e);
       const msg = e?.message || 'Gagal mendaftar. Silakan coba kembali.';

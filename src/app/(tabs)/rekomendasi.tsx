@@ -52,6 +52,7 @@ export default function RekomendasiTab() {
   const [plantingId, setPlantingId] = useState<string | null>(null);
   const [plantedSuccessId, setPlantedSuccessId] = useState<string | null>(null);
   const [selectedDetailItem, setSelectedDetailItem] = useState<RekomendasiItem | null>(null);
+  const [showNoLahanModal, setShowNoLahanModal] = useState(false);
 
   const filteredList = rekomendasiList.filter(item => {
     if (selectedCategory === 'ALL') return true;
@@ -63,6 +64,10 @@ export default function RekomendasiTab() {
   };
 
   const handlePlant = async (item: RekomendasiItem) => {
+    if (!activeLahan) {
+      setShowNoLahanModal(true);
+      return;
+    }
     setPlantingId(item.komoditas_id);
     try {
       await addTanamanAktif(item.komoditas_id, item.nama);
@@ -447,6 +452,17 @@ export default function RekomendasiTab() {
                             <ChevronRight size={14} color="#FFFFFF" />
                           </TouchableOpacity>
                         </View>
+                      ) : !activeLahan ? (
+                        <TouchableOpacity
+                          onPress={() => setShowNoLahanModal(true)}
+                          activeOpacity={0.85}
+                          className="w-full flex-row items-center justify-center bg-amber-50 border border-amber-300 py-3.5 px-3 rounded-2xl"
+                        >
+                          <AlertCircle size={15} color="#D97706" />
+                          <Text className="text-xs font-bold text-amber-900 ml-1.5" numberOfLines={1}>
+                            Buat Lahan Dahulu
+                          </Text>
+                        </TouchableOpacity>
                       ) : (
                         <TouchableOpacity
                           onPress={() => handlePlant(item)}
@@ -566,15 +582,82 @@ export default function RekomendasiTab() {
 
               {/* Modal CTA */}
               {selectedDetailItem && (
-                <Button
-                  title="Tanam di Pekarangan Saya"
-                  onPress={() => handlePlant(selectedDetailItem)}
-                  loading={plantingId === selectedDetailItem.komoditas_id}
-                  size="lg"
-                  className="w-full shadow-md"
-                  icon={<Plus size={18} color="#FFFFFF" strokeWidth={2.5} />}
-                />
+                !activeLahan ? (
+                  <Button
+                    title="Buat Lahan Dahulu untuk Menanam"
+                    variant="outline"
+                    onPress={() => {
+                      setSelectedDetailItem(null);
+                      setShowNoLahanModal(true);
+                    }}
+                    size="lg"
+                    className="w-full border-amber-400 bg-amber-50"
+                    icon={<AlertCircle size={18} color="#D97706" />}
+                  />
+                ) : (
+                  <Button
+                    title="Tanam di Pekarangan Saya"
+                    onPress={() => handlePlant(selectedDetailItem)}
+                    loading={plantingId === selectedDetailItem.komoditas_id}
+                    size="lg"
+                    className="w-full shadow-md"
+                    icon={<Plus size={18} color="#FFFFFF" strokeWidth={2.5} />}
+                  />
+                )
               )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal Peringatan Belum Ada Lahan */}
+        <Modal
+          visible={showNoLahanModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowNoLahanModal(false)}
+        >
+          <View className="flex-1 bg-black/60 justify-center items-center px-6">
+            <View className="bg-white rounded-3xl p-6 w-full max-w-sm items-center border border-gray-100 shadow-xl">
+              <View className="w-16 h-16 rounded-2xl bg-amber-100 items-center justify-center mb-3.5 border border-amber-200">
+                <AlertCircle size={32} color="#D97706" />
+              </View>
+
+              <View className="bg-amber-100/90 px-3 py-1 rounded-full mb-2">
+                <Text className="text-[10px] font-black text-amber-900 uppercase tracking-wider">
+                  Lahan Belum Tersedia
+                </Text>
+              </View>
+
+              <Text className="text-lg font-black text-gray-900 text-center mb-1.5">
+                Belum Ada Lahan Pekarangan
+              </Text>
+
+              <Text className="text-xs text-gray-500 text-center leading-relaxed mb-6 px-1">
+                Anda perlu membuat atau menentukan ukuran lahan di tab Lahan terlebih dahulu agar AI dapat menghitung kebutuhan ruang dan jadwal perawatan tanaman Anda.
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setShowNoLahanModal(false);
+                  router.push('/(tabs)/lahan');
+                }}
+                activeOpacity={0.85}
+                className="w-full bg-[#1C7430] py-3.5 rounded-2xl items-center justify-center shadow-xs mb-2.5"
+              >
+                <Text className="text-xs font-black text-white">
+                  Buat Lahan Sekarang 🌱
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setShowNoLahanModal(false)}
+                activeOpacity={0.7}
+                className="py-2 px-4"
+              >
+                <Text className="text-xs font-semibold text-gray-500">
+                  Nanti Saja
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>

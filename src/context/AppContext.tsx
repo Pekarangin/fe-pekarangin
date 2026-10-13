@@ -67,6 +67,14 @@ interface AppContextType {
   deleteReminder: (id: string) => Promise<void>;
   triggerTestAlarm: (label?: string) => Promise<void>;
 
+  // Global Page Tour State
+  isTourActive: boolean;
+  setIsTourActive: (active: boolean) => void;
+  tourStep: 1 | 2 | 3 | 4 | 5;
+  setTourStep: (step: 1 | 2 | 3 | 4 | 5) => void;
+  startTour: () => void;
+  skipTour: () => void;
+
   // AI Insight
   askAiInsight: (message: string, cropId?: string) => Promise<{ reply: string; konteks_tanaman?: any }>;
 }
@@ -182,11 +190,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authService
         .getMe()
         .then(profile => {
+          const savedWilayah = profile.wilayah || profileStorage.getWilayah() || '';
+          if (profile.wilayah) {
+            profileStorage.setWilayah(profile.wilayah);
+          }
           setUser({
             user_id: profile.user_id,
             nama: profile.nama,
             email: profile.email,
-            wilayah: profileStorage.getWilayah() || '',
+            wilayah: savedWilayah,
             avatar_url: profile.avatar_url || null,
             created_at: profile.created_at || new Date().toISOString(),
           });
@@ -362,7 +374,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const login = async (email: string, password?: string, nama?: string) => {
     try {
       const data = await authService.login(email, password || 'password123');
-      const savedWilayah = profileStorage.getWilayah() || '';
+      const savedWilayah = data.wilayah || profileStorage.getWilayah() || '';
+      if (data.wilayah) {
+        profileStorage.setWilayah(data.wilayah);
+      }
       setUser({
         user_id: data.user_id,
         nama: data.nama || nama || email.split('@')[0],
@@ -403,11 +418,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Google ID Token tidak ditemukan.');
     }
     const data = await authService.loginWithGoogle(idToken);
+    const savedWilayah = data.wilayah || profileStorage.getWilayah() || '';
+    if (data.wilayah) {
+      profileStorage.setWilayah(data.wilayah);
+    }
     setUser({
       user_id: data.user_id,
       nama: data.nama,
       email: data.email,
-      wilayah: profileStorage.getWilayah() || '',
+      wilayah: savedWilayah,
       avatar_url: data.avatar_url || null,
       created_at: new Date().toISOString(),
     });
@@ -424,12 +443,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       profileStorage.setWilayah(wilayah);
     }
     try {
-      const data = await authService.register(nama, email, password || 'password123');
+      const data = await authService.register(nama, email, password || 'password123', wilayah);
+      const savedWilayah = data.wilayah || wilayah || '';
+      if (savedWilayah) {
+        profileStorage.setWilayah(savedWilayah);
+      }
       setUser({
         user_id: data.user_id,
         nama: data.nama,
         email: data.email,
-        wilayah: wilayah || '',
+        wilayah: savedWilayah,
         avatar_url: data.avatar_url || null,
         created_at: new Date().toISOString(),
       });
@@ -638,11 +661,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addTanamanAktif = async (komoditasId: string, komoditasNama: string) => {
+    if (!activeLahan) {
+      throw new Error('Belum ada lahan aktif. Silakan buat atau pilih lahan terlebih dahulu sebelum menanam.');
+    }
+
     const matched = rekomendasiList.find(r => r.komoditas_id === komoditasId);
     let newCrop: TanamanAktif;
 
     try {
-      if (activeLahan?.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
+      if (activeLahan.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
         const created = await trackingService.create({
           lahan_id: activeLahan.lahan_id,
           komoditas_id: komoditasId,
@@ -676,8 +703,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newCrop = {
         tanaman_aktif_id: 'crop-' + Date.now(),
         user_id: user?.user_id || 'usr-1',
-        lahan_id: activeLahan?.lahan_id || 'lah-1',
-        lahan_nama: activeLahan?.nama_lahan || 'Pekarangan Utama',
+        lahan_id: activeLahan.lahan_id,
+        lahan_nama: activeLahan.nama_lahan,
         komoditas_id: komoditasId,
         komoditas_nama: komoditasNama,
         tanggal_tanam: new Date().toISOString().split('T')[0],
@@ -701,6 +728,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveLahan(prev => (prev ? { ...prev, jumlah_tanaman_aktif: (prev.jumlah_tanaman_aktif || 0) + 1 } : null));
     }
   };
+
+  const [isTourActive, setIsTourActive] = useState<boolean>(false);
+  const [tourStep, setTourStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+
+  const startTour = useCallback(() => {
+    setIsTourActive(true);
+    setTourStep(1);
+  }, []);
+
+  const skipTour = useCallback(() => {
+    setIsTourActive(false);
+    setTourStep(1);
+  }, []);
 
   const recordPanen = async (cropId: string, beratGram: number): Promise<{ hematRp: number; tanamanNama: string }> => {
     const targetCrop = activeCrops.find(c => c.tanaman_aktif_id === cropId);
@@ -754,7 +794,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const askAiInsight = async (message: string, cropId?: string) => {
-    return aiInsightService.chat(message, cropId);
+    return aiInsightService.chat(message, cropId, user?.nama);
   };
 
   return (
@@ -794,6 +834,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCustomReminder,
         deleteReminder,
         triggerTestAlarm,
+        isTourActive,
+        setIsTourActive,
+        tourStep,
+        setTourStep,
+        startTour,
+        skipTour,
         askAiInsight,
       }}
     >
