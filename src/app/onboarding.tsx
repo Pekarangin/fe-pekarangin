@@ -48,9 +48,17 @@ const ONBOARDING_STEPS = [
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { setIsOnboarded } = useApp();
+  const { setIsOnboarded, isOnboarded, isAuthenticated } = useApp();
   const [currentStep, setCurrentStep] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/(tabs)');
+    } else if (isOnboarded) {
+      router.replace('/(auth)/login');
+    }
+  }, [isOnboarded, isAuthenticated, router]);
 
   const handleNext = () => {
     if (currentStep < ONBOARDING_STEPS.length - 1) {

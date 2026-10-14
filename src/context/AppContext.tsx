@@ -17,6 +17,8 @@ import {
   profileStorage,
   lahanStorage,
   onboardingStorage,
+  initStorageAsync,
+  userStorage,
 } from '../services/api';
 import { getCropImage } from '../constants/cropImages';
 
@@ -26,6 +28,7 @@ interface AppContextType {
   isAuthenticated: boolean;
   isOnboarded: boolean;
   setIsOnboarded: (val: boolean) => void;
+  isAuthLoading: boolean;
   login: (email: string, password?: string, nama?: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => void;
@@ -96,6 +99,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isOnboarded, setIsOnboardedState] = useState<boolean>(() => onboardingStorage.get());
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   const setIsOnboarded = useCallback((val: boolean) => {
     onboardingStorage.set(val);
@@ -183,32 +187,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Check active session via GET /auth/me on mount
+  // Check active session and persisted state on mount
   useEffect(() => {
-    const token = tokenStorage.get();
-    if (token) {
-      authService
-        .getMe()
-        .then(profile => {
-          const savedWilayah = profile.wilayah || profileStorage.getWilayah() || '';
-          if (profile.wilayah) {
-            profileStorage.setWilayah(profile.wilayah);
-          }
-          setUser({
-            user_id: profile.user_id,
-            nama: profile.nama,
-            email: profile.email,
-            wilayah: savedWilayah,
-            avatar_url: profile.avatar_url || null,
-            created_at: profile.created_at || new Date().toISOString(),
-          });
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const stored = await initStorageAsync();
+        if (!isMounted) return;
+
+        if (stored.onboarded) {
+          setIsOnboardedState(true);
+        }
+
+        if (stored.user && stored.token) {
+          setUser(stored.user);
           setIsAuthenticated(true);
-          fetchRemoteUserData();
-        })
-        .catch(() => {
-          tokenStorage.clear();
-        });
-    }
+        }
+      } catch (err) {
+        console.warn('initStorageAsync error:', err);
+      } finally {
+        if (isMounted) {
+          setIsAuthLoading(false);
+        }
+      }
+
+      // Background verify & refresh if token exists
+      const token = tokenStorage.get();
+      if (token) {
+        authService
+          .getMe()
+          .then(profile => {
+            if (!isMounted) return;
+            const savedWilayah = profile.wilayah || profileStorage.getWilayah() || '';
+            if (profile.wilayah) {
+              profileStorage.setWilayah(profile.wilayah);
+            }
+            const verifiedUser: User = {
+              user_id: profile.user_id,
+              nama: profile.nama,
+              email: profile.email,
+              wilayah: savedWilayah,
+              avatar_url: profile.avatar_url || null,
+              created_at: profile.created_at || new Date().toISOString(),
+            };
+            setUser(verifiedUser);
+            userStorage.set(verifiedUser);
+            setIsAuthenticated(true);
+            setIsOnboardedState(true);
+            fetchRemoteUserData();
+          })
+          .catch((err: any) => {
+            if (!isMounted) return;
+            if (err?.status === 401) {
+              tokenStorage.clear();
+              userStorage.clear();
+              setUser(null);
+              setIsAuthenticated(false);
+            }
+          });
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
   }, [fetchRemoteUserData]);
 
   const fetchRekomendasiData = useCallback(async (): Promise<RekomendasiItem[] | null> => {
@@ -378,15 +421,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (data.wilayah) {
         profileStorage.setWilayah(data.wilayah);
       }
-      setUser({
+      const loggedInUser: User = {
         user_id: data.user_id,
         nama: data.nama || nama || email.split('@')[0],
         email: data.email,
         wilayah: savedWilayah,
         avatar_url: data.avatar_url || null,
         created_at: new Date().toISOString(),
-      });
+      };
+      setUser(loggedInUser);
+      userStorage.set(loggedInUser);
       setIsAuthenticated(true);
+      setIsOnboarded(true);
       setLahans([]);
       setActiveLahan(null);
       setActiveCrops([]);
@@ -397,15 +443,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw e;
       }
       console.warn('API login error, fallback ke local state:', e);
-      setUser({
+      const fallbackUser: User = {
         user_id: 'usr-' + Date.now(),
         nama: nama || email.split('@')[0],
         email: email,
         wilayah: profileStorage.getWilayah() || '',
         avatar_url: null,
         created_at: new Date().toISOString(),
-      });
+      };
+      setUser(fallbackUser);
+      userStorage.set(fallbackUser);
       setIsAuthenticated(true);
+      setIsOnboarded(true);
       setLahans([]);
       setActiveLahan(null);
       setActiveCrops([]);
@@ -422,15 +471,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (data.wilayah) {
       profileStorage.setWilayah(data.wilayah);
     }
-    setUser({
+    const loggedInUser: User = {
       user_id: data.user_id,
       nama: data.nama,
       email: data.email,
       wilayah: savedWilayah,
       avatar_url: data.avatar_url || null,
       created_at: new Date().toISOString(),
-    });
+    };
+    setUser(loggedInUser);
+    userStorage.set(loggedInUser);
     setIsAuthenticated(true);
+    setIsOnboarded(true);
     setLahans([]);
     setActiveLahan(null);
     setActiveCrops([]);
@@ -448,15 +500,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (savedWilayah) {
         profileStorage.setWilayah(savedWilayah);
       }
-      setUser({
+      const registeredUser: User = {
         user_id: data.user_id,
         nama: data.nama,
         email: data.email,
         wilayah: savedWilayah,
         avatar_url: data.avatar_url || null,
         created_at: new Date().toISOString(),
-      });
+      };
+      setUser(registeredUser);
+      userStorage.set(registeredUser);
       setIsAuthenticated(true);
+      setIsOnboarded(true);
       setLahans([]);
       setActiveLahan(null);
       setActiveCrops([]);
@@ -467,15 +522,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw e;
       }
       console.warn('API register error, fallback ke local state:', e);
-      setUser({
+      const fallbackUser: User = {
         user_id: 'usr-' + Date.now(),
         nama: nama || 'Pengguna',
         email: email,
         wilayah: wilayah || '',
         avatar_url: null,
         created_at: new Date().toISOString(),
-      });
+      };
+      setUser(fallbackUser);
+      userStorage.set(fallbackUser);
       setIsAuthenticated(true);
+      setIsOnboarded(true);
       setLahans([]);
       setActiveLahan(null);
       setActiveCrops([]);
@@ -485,6 +543,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     authService.logout();
+    userStorage.clear();
     profileStorage.clear();
     setUser(null);
     setIsAuthenticated(false);
@@ -805,6 +864,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthenticated,
         isOnboarded,
         setIsOnboarded,
+        isAuthLoading,
         login,
         loginWithGoogle,
         logout,

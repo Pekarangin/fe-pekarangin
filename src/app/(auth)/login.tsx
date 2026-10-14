@@ -24,11 +24,17 @@ WebBrowser.maybeCompleteAuthSession();
 export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { login, loginWithGoogle } = useApp();
+  const { login, loginWithGoogle, isAuthenticated } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated, router]);
 
   const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
   const [, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({

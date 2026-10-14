@@ -9,12 +9,13 @@ export default function SplashScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const rootNavigationState = useRootNavigationState();
-  const { isOnboarded, isAuthenticated } = useApp();
+  const { isOnboarded, isAuthenticated, isAuthLoading } = useApp();
   const navigatedRef = useRef(false);
 
   const performNavigation = useCallback(() => {
     if (navigatedRef.current) return;
     if (!rootNavigationState?.key) return;
+    if (isAuthLoading) return;
 
     navigatedRef.current = true;
     if (!isOnboarded) {
@@ -24,17 +25,17 @@ export default function SplashScreen() {
     } else {
       router.replace('/(tabs)');
     }
-  }, [rootNavigationState?.key, isOnboarded, isAuthenticated, router]);
+  }, [rootNavigationState?.key, isAuthLoading, isOnboarded, isAuthenticated, router]);
 
   useEffect(() => {
-    if (!rootNavigationState?.key) return;
+    if (!rootNavigationState?.key || isAuthLoading) return;
 
     const timer = setTimeout(() => {
       performNavigation();
-    }, 600);
+    }, 350);
 
     return () => clearTimeout(timer);
-  }, [rootNavigationState?.key, performNavigation]);
+  }, [rootNavigationState?.key, isAuthLoading, performNavigation]);
 
   return (
     <TouchableOpacity

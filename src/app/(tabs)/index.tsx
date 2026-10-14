@@ -741,7 +741,7 @@ export default function DashboardHomeScreen() {
         )}
 
         <TouchableOpacity
-          onPress={() => router.push('/konsultasi')}
+          onPress={() => router.push('/konsultasi' as any)}
           activeOpacity={0.85}
           style={{
             elevation: 8,
