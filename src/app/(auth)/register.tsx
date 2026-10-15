@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
   FlatList,
+  Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,6 +58,7 @@ export default function RegisterScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { register, loginWithGoogle } = useApp();
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const [nama, setNama] = useState('');
   const [email, setEmail] = useState('');
@@ -64,6 +66,20 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setIsKeyboardVisible(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
   const [, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
@@ -78,7 +94,7 @@ export default function RegisterScreen() {
       const idToken = googleResponse.params.id_token;
       loginWithGoogle(idToken)
         .then(() => {
-          router.replace('/(tabs)?welcome=true');
+          router.replace('/wizard-setup' as any);
         })
         .catch((err: any) => {
           const msg = err?.message || 'Registrasi dengan akun Google gagal di server.';
@@ -331,7 +347,7 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       await register(nama.trim(), email.trim().toLowerCase(), password, wilayah);
-      router.replace('/(tabs)?welcome=true');
+      router.replace('/wizard-setup' as any);
     } catch (e: any) {
       console.error(e);
       const msg = e?.message || 'Gagal mendaftar. Silakan coba kembali.';
@@ -364,22 +380,26 @@ export default function RegisterScreen() {
   };
 
   return (
-    <View
-      style={{
-        paddingTop: Math.max(insets.top, 20),
-        paddingBottom: Math.max(insets.bottom, 20),
-      }}
-      className="flex-1 bg-[#F8FAF8]"
-    >
+    <View className="flex-1 bg-[#F8FAF8]">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         className="flex-1"
       >
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-          className="px-6 py-6"
+          ref={scrollViewRef}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingTop: Math.max(insets.top, 24),
+            paddingBottom: Math.max(insets.bottom, 24) + (isKeyboardVisible ? 280 : 40),
+          }}
+          keyboardShouldPersistTaps="handled"
+          className="px-6"
           showsVerticalScrollIndicator={false}
         >
+          {/* Elastic top spacer to center vertically when keyboard is hidden */}
+          {!isKeyboardVisible && <View className="flex-1" />}
+
           {/* Header Logo & Subtitle */}
           <View className="items-center mb-6">
             <Logo
@@ -510,6 +530,11 @@ export default function RegisterScreen() {
               isPassword
               value={password}
               onChangeText={setPassword}
+              onFocus={() => {
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollToEnd({ animated: true });
+                }, 150);
+              }}
               leftIcon={<Lock size={18} color="#6B7280" />}
             />
 
@@ -541,6 +566,9 @@ export default function RegisterScreen() {
               icon={<GoogleIcon size={20} />}
             />
           </View>
+
+          {/* Elastic bottom spacer to center vertically when keyboard is hidden */}
+          {!isKeyboardVisible && <View className="flex-1" />}
         </ScrollView>
       </KeyboardAvoidingView>
 

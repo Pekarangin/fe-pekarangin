@@ -55,7 +55,7 @@ function getFormattedTime(): string {
   return `${h}:${m}`;
 }
 
-export default function KonsultasiScreen() {
+export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, activeCrops, activeLahan, askAiInsight } = useApp();
@@ -172,13 +172,15 @@ export default function KonsultasiScreen() {
       {/* Top Header */}
       <View className="bg-white border-b border-gray-200/80 px-4 py-3 flex-row items-center justify-between shadow-xs">
         <View className="flex-row items-center flex-1 mr-3">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-            className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3"
-          >
-            <ArrowLeft size={20} color="#1F2937" />
-          </TouchableOpacity>
+          {!isTab && router.canGoBack() && (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+              className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3"
+            >
+              <ArrowLeft size={20} color="#1F2937" />
+            </TouchableOpacity>
+          )}
           <View className="relative mr-2.5">
             <View className="w-10 h-10 rounded-2xl bg-[#124E2A] items-center justify-center shadow-xs">
               <Bot size={22} color="#FFFFFF" />

@@ -23,6 +23,7 @@ import {
   Check,
   RotateCcw,
   ArrowRight,
+  ArrowLeft,
   Grid,
   Maximize,
   X,
@@ -57,6 +58,7 @@ export default function LahanTab() {
   const [sumberPaparan, setSumberPaparan] = useState<SumberPaparan>(
     activeLahan?.sumber_paparan || 'MANUAL'
   );
+  const [activePreset, setActivePreset] = useState<'square' | 'rect' | 'lshape' | 'all' | null>('square');
 
   const currentLahanKey = `${activeLahan?.lahan_id || ''}-${(activeLahan?.grid_snapshot || []).join(',')}`;
   const [prevLahanKey, setPrevLahanKey] = useState<string>(currentLahanKey);
@@ -68,6 +70,7 @@ export default function LahanTab() {
     setManualLuas(activeLahan.luas_m2 ? activeLahan.luas_m2.toString() : '0');
     setPaparanSinar(activeLahan.paparan_sinar || 'FULL_SUN');
     setSumberPaparan(activeLahan.sumber_paparan || 'MANUAL');
+    setActivePreset(null);
   }
 
   // AI Modal State
@@ -90,6 +93,7 @@ export default function LahanTab() {
       : Number(parseFloat(manualLuas) || 0);
 
   const toggleCell = (index: number) => {
+    setActivePreset(null);
     setSelectedCells(prev => {
       if (prev.includes(index)) {
         return prev.filter(i => i !== index);
@@ -101,10 +105,13 @@ export default function LahanTab() {
 
   const applyPreset = (type: 'square' | 'rect' | 'lshape' | 'all' | 'clear') => {
     if (type === 'clear') {
+      setActivePreset(null);
       setSelectedCells([]);
     } else if (type === 'all') {
+      setActivePreset('all');
       setSelectedCells(Array.from({ length: TOTAL_CELLS }, (_, i) => i));
     } else if (type === 'square') {
+      setActivePreset('square');
       // 4x4 in center (16 cells = 4.0 m2)
       const sq = [
         18, 19, 20, 21,
@@ -114,6 +121,7 @@ export default function LahanTab() {
       ];
       setSelectedCells(sq);
     } else if (type === 'rect') {
+      setActivePreset('rect');
       // 2x8 strip (16 cells = 4.0 m2)
       const rect = [
         16, 17, 18, 19, 20, 21, 22, 23,
@@ -121,6 +129,7 @@ export default function LahanTab() {
       ];
       setSelectedCells(rect);
     } else if (type === 'lshape') {
+      setActivePreset('lshape');
       // L shape
       const l = [
         10, 11, 18, 19, 26, 27, 34, 35,
@@ -243,9 +252,18 @@ export default function LahanTab() {
       >
         {/* Header Title */}
         <View className="flex-row items-center mb-4">
+          {router.canGoBack() && (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+              className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center mr-2 border border-gray-200"
+            >
+              <ArrowLeft size={16} color="#1F2937" />
+            </TouchableOpacity>
+          )}
           <Trees size={20} color="#1C7430" />
           <Text className="text-sm font-bold text-[#1C7430] ml-2">
-            Lahan Anda
+            Kelola Lahan Pekarangan
           </Text>
         </View>
 
@@ -323,46 +341,98 @@ export default function LahanTab() {
             <View>
               {/* Presets Toolbar */}
               <View className="mb-3">
-                <Text className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                  Preset Bentuk Lahan Cepat:
-                </Text>
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                    Pilihan Bentuk Cepat:
+                  </Text>
+                  {activePreset && (
+                    <Text className="text-[10px] font-bold text-[#1C7430]">
+                      Aktif: {activePreset === 'square' ? 'Persegi 4m²' : activePreset === 'rect' ? 'Memanjang 4m²' : activePreset === 'lshape' ? 'Bentuk L' : 'Semua'}
+                    </Text>
+                  )}
+                </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-1 mb-2">
                   <TouchableOpacity
                     onPress={() => applyPreset('square')}
-                    className="bg-green-50/80 border border-green-200 px-3 py-1.5 rounded-xl mr-2 flex-row items-center"
+                    activeOpacity={0.8}
+                    className={`px-3 py-2 rounded-xl mr-2 flex-row items-center border ${
+                      activePreset === 'square'
+                        ? 'bg-[#1C7430] border-[#1C7430] shadow-xs'
+                        : 'bg-white border-gray-200'
+                    }`}
                   >
-                    <Grid size={12} color="#1C7430" />
-                    <Text className="text-xs font-bold text-[#1C7430] ml-1.5">Persegi 2×2m</Text>
+                    <Grid size={13} color={activePreset === 'square' ? '#FFFFFF' : '#1C7430'} />
+                    <Text
+                      className={`text-xs font-bold ml-1.5 ${
+                        activePreset === 'square' ? 'text-white' : 'text-gray-800'
+                      }`}
+                    >
+                      Persegi 2×2m
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={() => applyPreset('rect')}
-                    className="bg-green-50/80 border border-green-200 px-3 py-1.5 rounded-xl mr-2 flex-row items-center"
+                    activeOpacity={0.8}
+                    className={`px-3 py-2 rounded-xl mr-2 flex-row items-center border ${
+                      activePreset === 'rect'
+                        ? 'bg-[#1C7430] border-[#1C7430] shadow-xs'
+                        : 'bg-white border-gray-200'
+                    }`}
                   >
-                    <Maximize size={12} color="#1C7430" />
-                    <Text className="text-xs font-bold text-[#1C7430] ml-1.5">Memanjang 1×4m</Text>
+                    <Maximize size={13} color={activePreset === 'rect' ? '#FFFFFF' : '#1C7430'} />
+                    <Text
+                      className={`text-xs font-bold ml-1.5 ${
+                        activePreset === 'rect' ? 'text-white' : 'text-gray-800'
+                      }`}
+                    >
+                      Memanjang 1×4m
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={() => applyPreset('lshape')}
-                    className="bg-green-50/80 border border-green-200 px-3 py-1.5 rounded-xl mr-2 flex-row items-center"
+                    activeOpacity={0.8}
+                    className={`px-3 py-2 rounded-xl mr-2 flex-row items-center border ${
+                      activePreset === 'lshape'
+                        ? 'bg-[#1C7430] border-[#1C7430] shadow-xs'
+                        : 'bg-white border-gray-200'
+                    }`}
                   >
-                    <Trees size={12} color="#1C7430" />
-                    <Text className="text-xs font-bold text-[#1C7430] ml-1.5">Pojok L-Shape</Text>
+                    <Trees size={13} color={activePreset === 'lshape' ? '#FFFFFF' : '#1C7430'} />
+                    <Text
+                      className={`text-xs font-bold ml-1.5 ${
+                        activePreset === 'lshape' ? 'text-white' : 'text-gray-800'
+                      }`}
+                    >
+                      Pojok L-Shape
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={() => applyPreset('all')}
-                    className="bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-xl mr-2 flex-row items-center"
+                    activeOpacity={0.8}
+                    className={`px-3 py-2 rounded-xl mr-2 flex-row items-center border ${
+                      activePreset === 'all'
+                        ? 'bg-[#1C7430] border-[#1C7430] shadow-xs'
+                        : 'bg-white border-gray-200'
+                    }`}
                   >
-                    <Text className="text-xs font-semibold text-gray-700">Pilih Semua</Text>
+                    <Text
+                      className={`text-xs font-bold ${
+                        activePreset === 'all' ? 'text-white' : 'text-gray-700'
+                      }`}
+                    >
+                      Pilih Semua
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={() => applyPreset('clear')}
-                    className="bg-red-50 border border-red-200 px-3 py-1.5 rounded-xl mr-2 flex-row items-center"
+                    activeOpacity={0.8}
+                    className="bg-red-50/80 border border-red-200 px-3 py-2 rounded-xl mr-2 flex-row items-center"
                   >
-                    <RotateCcw size={12} color="#DC2626" />
+                    <RotateCcw size={13} color="#DC2626" />
                     <Text className="text-xs font-bold text-red-600 ml-1">Reset</Text>
                   </TouchableOpacity>
                 </ScrollView>
@@ -580,153 +650,91 @@ export default function LahanTab() {
           animationType="fade"
           onRequestClose={() => setAiModalVisible(false)}
         >
-          <View className="flex-1 bg-black/60 justify-center items-center px-5">
-            <View className="bg-white rounded-3xl p-6 w-full max-w-sm border border-gray-100 shadow-2xl">
-              <View className="flex-row justify-between items-center mb-4">
-                <View className="flex-row items-center">
-                  <Sparkles size={18} color="#1C7430" />
-                  <Text className="text-base font-black text-gray-900 ml-1.5">
-                    Gemini AI Vision
+          <View className="flex-1 bg-black/75 justify-center items-center px-5">
+            <View className="bg-white rounded-3xl p-6 w-full max-w-sm">
+              <View className="flex-row items-center justify-between mb-4">
+                <View style={{ gap: 10 }} className="flex-row items-center">
+                  <View className="w-8 h-8 rounded-xl bg-emerald-100 items-center justify-center">
+                    <Sparkles size={16} color="#166534" />
+                  </View>
+                  <Text className="text-base font-black text-gray-900">
+                    Kamera Gemini Vision AI
                   </Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => setAiModalVisible(false)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  className="w-7 h-7 rounded-full bg-gray-100 items-center justify-center"
                 >
-                  <X size={20} color="#6B7280" />
+                  <X size={14} color="#6B7280" />
                 </TouchableOpacity>
               </View>
 
-              <Text className="text-xs text-gray-500 mb-4 leading-relaxed">
-                Ambil atau unggah foto pekarangan Anda. AI Gemini akan menganalisis sudut bayangan dan intensitas pencahayaan matahari secara akurat.
-              </Text>
-
-              {/* Photo Preview Container */}
-              <View className="h-44 w-full rounded-2xl bg-gray-100 overflow-hidden mb-4 border border-gray-200 relative items-center justify-center">
-                {aiPhotoUri ? (
-                  <Image
-                    source={{ uri: aiPhotoUri }}
-                    className="w-full h-full"
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View className="items-center px-4">
-                    <Camera size={36} color="#9CA3AF" />
-                    <Text className="text-xs font-semibold text-gray-500 mt-2 text-center">
-                      Belum ada foto yang dipilih
-                    </Text>
-                    <Text className="text-[10px] text-gray-400 text-center mt-0.5">
-                      Pilih dari kamera atau galeri untuk memulai analisis AI
-                    </Text>
-                  </View>
-                )}
-
-                {aiPhotoUri && (
-                  <View className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-lg">
-                    <Text className="text-[10px] font-bold text-white">
-                      📍 Foto Pekarangan Siap Dianalisis
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Analysis Status */}
-              {aiAnalyzing ? (
-                <View className="bg-green-50 p-4 rounded-2xl border border-green-200 items-center justify-center mb-4">
-                  <ActivityIndicator size="small" color="#1C7430" />
-                  <Text className="text-xs font-bold text-[#1C7430] mt-2">
-                    Gemini Vision sedang menganalisis foto...
-                  </Text>
-                  <Text className="text-[10px] text-gray-500 mt-0.5 text-center">
-                    Memindai bayangan, intensitas lumen, dan orientasi cahaya
+              {aiPhotoUri ? (
+                <View className="w-full h-44 rounded-2xl overflow-hidden mb-3.5 border border-gray-200">
+                  <Image source={{ uri: aiPhotoUri }} className="w-full h-full" resizeMode="cover" />
+                </View>
+              ) : (
+                <View className="w-full h-36 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 items-center justify-center mb-3.5">
+                  <Sun size={28} color="#9CA3AF" />
+                  <Text className="text-xs font-medium text-gray-400 mt-2">
+                    Potret pekarangan terbuka Anda
                   </Text>
                 </View>
-              ) : aiAnalysisDone ? (
-                <View className="bg-emerald-50 p-4 rounded-2xl border border-emerald-200 mb-4">
-                  <View className="flex-row items-center justify-between mb-1.5">
-                    <View className="flex-row items-center flex-1 mr-2">
-                      <CheckCircle2 size={16} color="#166534" />
-                      <Text className="text-xs font-bold text-emerald-900 ml-1.5 flex-1">
-                        {aiDetectedSun === 'FULL_SUN'
-                          ? 'Sinar Penuh (>6 Jam)'
-                          : aiDetectedSun === 'PARTIAL_SUN'
-                          ? 'Sinar Parsial (3-6 Jam)'
-                          : 'Area Teduh (<3 Jam)'}
-                      </Text>
-                    </View>
-                    <View className="bg-emerald-200 px-2 py-0.5 rounded-md">
-                      <Text className="text-[10px] font-extrabold text-emerald-900">
-                        {Math.round(aiConfidence * 100)}% Cocok
-                      </Text>
-                    </View>
+              )}
+
+              {aiAnalyzing && (
+                <View className="py-3 items-center">
+                  <ActivityIndicator size="small" color="#166534" />
+                  <Text className="text-xs font-bold text-emerald-800 mt-2">
+                    Menganalisis bayangan & sudut matahari...
+                  </Text>
+                </View>
+              )}
+
+              {aiAnalysisDone && (
+                <View className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 mb-4">
+                  <View style={{ gap: 6 }} className="flex-row items-center mb-1">
+                    <CheckCircle2 size={15} color="#166534" />
+                    <Text className="text-xs font-black text-emerald-900">
+                      Hasil: {aiDetectedSun === 'FULL_SUN' ? 'Sinar Penuh (>6 Jam)' : 'Sinar Sebagian (3-6 Jam)'}
+                    </Text>
                   </View>
                   <Text className="text-[11px] text-emerald-800 leading-snug">
-                    {aiResultNote}
+                    {aiResultNote} (Akurasi {Math.round(aiConfidence * 100)}%)
                   </Text>
                 </View>
-              ) : (
-                <View className="flex-row mb-4" style={{ gap: 12 }}>
-                  <TouchableOpacity
-                    onPress={handleTakePhoto}
-                    className="flex-1 bg-green-50 border border-green-200 py-3 rounded-xl items-center justify-center flex-row"
-                  >
-                    <Camera size={14} color="#1C7430" />
-                    <Text className="text-xs font-bold text-[#1C7430] ml-1.5">
-                      Foto Kamera
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={handlePickImage}
-                    className="flex-1 bg-gray-50 border border-gray-200 py-3 rounded-xl items-center justify-center flex-row"
-                  >
-                    <Upload size={14} color="#4B5563" />
-                    <Text className="text-xs font-semibold text-gray-700 ml-1.5">
-                      Pilih Galeri
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               )}
 
-              {/* Action Modal Button */}
-              {aiAnalysisDone ? (
-                <View className="space-y-2">
-                  <Button
-                    title="Gunakan Hasil Analisis"
+              {/* Actions with clean gap */}
+              <View style={{ gap: 10 }}>
+                {!aiAnalysisDone ? (
+                  <>
+                    <TouchableOpacity
+                      onPress={handleTakePhoto}
+                      style={{ gap: 8 }}
+                      className="w-full bg-[#124E2A] py-3.5 rounded-2xl flex-row items-center justify-center"
+                    >
+                      <Camera size={16} color="#FFFFFF" />
+                      <Text className="text-xs font-black text-white">Buka Kamera Perangkat</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handlePickImage}
+                      style={{ gap: 8 }}
+                      className="w-full bg-gray-100 py-3.5 rounded-2xl flex-row items-center justify-center border border-gray-200"
+                    >
+                      <Upload size={16} color="#4B5563" />
+                      <Text className="text-xs font-bold text-gray-700">Pilih dari Galeri</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity
                     onPress={handleApplyAiResult}
-                    size="md"
-                    className="w-full"
-                  />
-                  <TouchableOpacity
-                    onPress={handlePickImage}
-                    className="py-2 items-center"
+                    className="w-full bg-emerald-600 py-3.5 rounded-2xl items-center justify-center"
                   >
-                    <Text className="text-xs font-semibold text-gray-500">
-                      Coba Foto Lain
-                    </Text>
+                    <Text className="text-xs font-black text-white">Terapkan Hasil Analisis</Text>
                   </TouchableOpacity>
-                </View>
-              ) : (
-                <View className="flex-row" style={{ gap: 12 }}>
-                  <TouchableOpacity
-                    onPress={handleTakePhoto}
-                    disabled={aiAnalyzing}
-                    className="flex-1 bg-[#1C7430] py-3 rounded-xl items-center justify-center flex-row shadow-xs"
-                  >
-                    <Camera size={15} color="#FFFFFF" />
-                    <Text className="text-xs font-bold text-white ml-1.5">
-                      {aiAnalyzing ? 'Menganalisis...' : 'Buka Kamera'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handlePickImage}
-                    disabled={aiAnalyzing}
-                    className="bg-gray-100 px-4 py-3 rounded-xl items-center justify-center"
-                  >
-                    <Upload size={16} color="#374151" />
-                  </TouchableOpacity>
-                </View>
-              )}
+                )}
+              </View>
             </View>
           </View>
         </Modal>

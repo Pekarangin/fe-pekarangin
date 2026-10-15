@@ -5,7 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  Animated,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,12 +22,17 @@ import {
   Plus,
   ArrowRight,
   Check,
-  Bot,
+  ChevronDown,
+  Layers,
+  X,
+  CheckCircle2,
+  ExternalLink,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { Badge } from '../../components/ui/Badge';
 import { getCropImageSource } from '../../constants/cropImages';
 import { fetchLiveWeather, RealWeather } from '../../services/weather';
+import { PaparanSinar } from '../../types';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
@@ -39,17 +44,14 @@ export default function DashboardHomeScreen() {
     lahans,
     activeCrops,
     activeLahan,
+    setActiveLahan,
     toggleAllSiram,
     toggleAllPupuk,
-    isTourActive,
-    tourStep,
     startTour,
   } = useApp();
 
   const [weather, setWeather] = useState<RealWeather | null>(null);
-
-  const [rippleAnim] = useState(() => new Animated.Value(0));
-  const [floatAnim] = useState(() => new Animated.Value(0));
+  const [isLahanModalOpen, setIsLahanModalOpen] = useState(false);
 
   useEffect(() => {
     if (welcome === 'true') {
@@ -57,40 +59,18 @@ export default function DashboardHomeScreen() {
     }
   }, [welcome, startTour]);
 
-  useEffect(() => {
-    if (isTourActive && tourStep === 5) {
-      const rippleLoop = Animated.loop(
-        Animated.timing(rippleAnim, {
-          toValue: 1,
-          duration: 1600,
-          useNativeDriver: true,
-        })
-      );
-      const floatLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim, {
-            toValue: -6,
-            duration: 700,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim, {
-            toValue: 0,
-            duration: 700,
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      rippleLoop.start();
-      floatLoop.start();
-      return () => {
-        rippleLoop.stop();
-        floatLoop.stop();
-      };
-    } else {
-      rippleAnim.setValue(0);
-      floatAnim.setValue(0);
+  const formatPaparanSinar = (sinar?: PaparanSinar) => {
+    switch (sinar) {
+      case 'FULL_SUN':
+        return 'Sinar Penuh';
+      case 'PARTIAL_SUN':
+        return 'Sinar Sebagian';
+      case 'SHADE':
+        return 'Teduh';
+      default:
+        return 'Sinar Penuh';
     }
-  }, [isTourActive, tourStep, rippleAnim, floatAnim]);
+  };
 
   const activeOnlyCrops = activeCrops.filter(c => c.status === 'AKTIF');
   const isSiramDone =
@@ -228,32 +208,91 @@ export default function DashboardHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Setup Banner jika belum punya lahan */}
-        {!activeLahan && lahans.length === 0 && (
-          <TouchableOpacity
-            onPress={() => router.push('/(tabs)/lahan')}
-            activeOpacity={0.9}
-            className="bg-emerald-900 rounded-3xl p-5 mb-5 border border-emerald-700/60 shadow-md shadow-emerald-950/20 flex-row items-center justify-between"
-          >
-            <View className="flex-1 mr-3">
-              <View className="flex-row items-center mb-1">
-                <Sparkles size={14} color="#4ADE80" />
-                <Text className="text-xs font-black text-emerald-200 ml-1.5 uppercase tracking-wide">
-                  Atur Lahan Pekarangan
+        {/* Pekarangan Header / Switcher Card */}
+        <View className="mb-5">
+          {activeLahan ? (
+            <View className="bg-white rounded-3xl p-4 border border-emerald-100 shadow-sm shadow-emerald-950/5">
+              <View className="flex-row items-center justify-between">
+                <TouchableOpacity
+                  onPress={() => setIsLahanModalOpen(true)}
+                  activeOpacity={0.8}
+                  className="flex-row items-center flex-1 mr-2"
+                >
+                  <View className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 items-center justify-center mr-3">
+                    <Trees size={20} color="#166534" />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center">
+                      <Text className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">
+                        Pekarangan Aktif
+                      </Text>
+                      {lahans.length > 1 && (
+                        <View className="bg-emerald-100 px-1.5 py-0.2 rounded-full ml-1.5">
+                          <Text className="text-[9px] font-bold text-emerald-800">
+                            {lahans.length} Lahan
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View className="flex-row items-center mt-0.5">
+                      <Text className="text-sm font-black text-gray-900 mr-1" numberOfLines={1}>
+                        🌱 {activeLahan.nama_lahan}
+                      </Text>
+                      <ChevronDown size={14} color="#4B5563" />
+                    </View>
+                    <Text className="text-[11px] font-medium text-gray-500 mt-0.5">
+                      {activeLahan.luas_m2} m² • {formatPaparanSinar(activeLahan.paparan_sinar)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                <View className="flex-row items-center gap-1.5">
+                  <TouchableOpacity
+                    onPress={() => router.push('/(tabs)/lahan')}
+                    activeOpacity={0.8}
+                    className="px-3 py-1.5 rounded-xl bg-gray-100 border border-gray-200 items-center justify-center"
+                  >
+                    <Text className="text-[10px] font-bold text-gray-700">
+                      Ubah
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setIsLahanModalOpen(true)}
+                    activeOpacity={0.8}
+                    className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 items-center justify-center"
+                  >
+                    <Layers size={14} color="#166534" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => router.push('/wizard-setup' as any)}
+              activeOpacity={0.9}
+              className="bg-emerald-900 rounded-3xl p-5 border border-emerald-700/60 shadow-md shadow-emerald-950/20 flex-row items-center justify-between"
+            >
+              <View className="flex-1 mr-3">
+                <View className="flex-row items-center mb-1">
+                  <Sparkles size={14} color="#4ADE80" />
+                  <Text className="text-xs font-black text-emerald-200 ml-1.5 uppercase tracking-wide">
+                    Setup Pekarangan Pertama
+                  </Text>
+                </View>
+                <Text className="text-base font-black text-white">
+                  Mulai Sketsa Lahan & Tentukan Sinar
+                </Text>
+                <Text className="text-xs text-emerald-100/80 mt-1 leading-relaxed">
+                  Tentukan ukuran pekarangan dan sinar matahari untuk mengaktifkan rekomendasi AI dan checklist harian.
                 </Text>
               </View>
-              <Text className="text-base font-black text-white">
-                Mulai Sketsa Lahan & Tentukan Sinar
-              </Text>
-              <Text className="text-xs text-emerald-100/80 mt-1 leading-relaxed">
-                Tentukan ukuran lahan pekarangan Anda untuk mendapatkan rekomendasi tanaman AI yang akurat.
-              </Text>
-            </View>
-            <View className="w-10 h-10 rounded-2xl bg-emerald-500 items-center justify-center shadow-xs">
-              <ArrowRight size={18} color="#FFFFFF" />
-            </View>
-          </TouchableOpacity>
-        )}
+              <View className="w-10 h-10 rounded-2xl bg-emerald-500 items-center justify-center shadow-xs">
+                <Plus size={18} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Hero Green Stats Card (Modern Deep Emerald) */}
         <TouchableOpacity
@@ -675,90 +714,135 @@ export default function DashboardHomeScreen() {
         </View>
       </ScrollView>
 
-      {/* Floating Action Button - Simple Circular AI Agent (Fitur 5) */}
-      <View
-        style={{
-          position: 'absolute',
-          bottom: 24,
-          right: 20,
-          zIndex: 1000,
-        }}
+      {/* Pekarangan Switcher Bottom Sheet Modal */}
+      <Modal
+        visible={isLahanModalOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsLahanModalOpen(false)}
       >
-        {isTourActive && tourStep === 5 && (
-          <Animated.View
-            pointerEvents="none"
+        <View className="flex-1 bg-black/65 justify-end">
+          <View
             style={{
-              position: 'absolute',
-              right: 66,
-              bottom: 10,
-              backgroundColor: '#072E18',
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              borderRadius: 16,
-              borderColor: '#34D399',
-              borderWidth: 1.5,
-              shadowColor: '#000',
-              shadowOpacity: 0.4,
-              shadowRadius: 10,
-              elevation: 8,
-              minWidth: 195,
-              transform: [{ translateX: floatAnim }],
+              maxHeight: '85%',
+              paddingBottom: Math.max(insets.bottom, 20),
             }}
+            className="bg-white rounded-t-[36px] w-full p-6 shadow-2xl"
           >
-            <Text className="text-[11px] font-black text-emerald-200 text-center">
-              👉 Fitur 5: Tanya Pekarang AI
-            </Text>
-          </Animated.View>
-        )}
+            {/* Modal Header */}
+            <View className="flex-row items-center justify-between pb-4 border-b border-gray-100 mb-4">
+              <View className="flex-row items-center">
+                <View className="w-9 h-9 rounded-2xl bg-emerald-100 items-center justify-center mr-2.5">
+                  <Trees size={18} color="#166534" />
+                </View>
+                <View>
+                  <Text className="text-base font-black text-gray-900">
+                    Pilih & Kelola Pekarangan
+                  </Text>
+                  <Text className="text-[11px] font-medium text-gray-500">
+                    Tentukan pekarangan yang sedang Anda tinjau
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsLahanModalOpen(false)}
+                activeOpacity={0.7}
+                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+              >
+                <X size={16} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
 
-        {isTourActive && tourStep === 5 && (
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: -6,
-              left: -6,
-              width: 68,
-              height: 68,
-              borderRadius: 34,
-              borderWidth: 2,
-              borderColor: '#34D399',
-              backgroundColor: 'rgba(52, 211, 153, 0.35)',
-              transform: [
-                {
-                  scale: rippleAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [1, 1.55],
-                  }),
-                },
-              ],
-              opacity: rippleAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.85, 0],
-              }),
-            }}
-          />
-        )}
+            {/* List Lahans */}
+            <ScrollView showsVerticalScrollIndicator={false} className="max-h-80 mb-4">
+              {lahans.length === 0 ? (
+                <View className="py-6 items-center">
+                  <Text className="text-xs font-semibold text-gray-400">
+                    Belum ada pekarangan terdaftar
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  {lahans.map(lahan => {
+                    const isActive = activeLahan?.lahan_id === lahan.lahan_id;
+                    return (
+                      <TouchableOpacity
+                        key={lahan.lahan_id}
+                        onPress={() => {
+                          setActiveLahan(lahan);
+                          setIsLahanModalOpen(false);
+                        }}
+                        activeOpacity={0.8}
+                        className={`p-4 rounded-2xl border flex-row items-center justify-between ${
+                          isActive
+                            ? 'bg-emerald-50/70 border-emerald-400'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <View className="flex-1 mr-2">
+                          <View className="flex-row items-center">
+                            <Text className="text-sm font-black text-gray-900" numberOfLines={1}>
+                              🌱 {lahan.nama_lahan}
+                            </Text>
+                            {isActive && (
+                              <View className="bg-emerald-600 px-2 py-0.5 rounded-full ml-2">
+                                <Text className="text-[9px] font-bold text-white">
+                                  Aktif
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text className="text-xs text-gray-500 mt-1 font-medium">
+                            {lahan.luas_m2} m² • {formatPaparanSinar(lahan.paparan_sinar)}
+                          </Text>
+                        </View>
+                        {isActive ? (
+                          <CheckCircle2 size={20} color="#166534" />
+                        ) : (
+                          <Circle size={18} color="#9CA3AF" />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
 
-        <TouchableOpacity
-          onPress={() => router.push('/konsultasi' as any)}
-          activeOpacity={0.85}
-          style={{
-            elevation: 8,
-            shadowColor: '#124E2A',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-          }}
-          className={`w-14 h-14 rounded-full bg-[#124E2A] items-center justify-center border ${
-            isTourActive && tourStep === 5
-              ? 'border-emerald-300'
-              : 'border-emerald-300/40'
-          }`}
-        >
-          <Bot size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
+            {/* Action Buttons */}
+            <View style={{ gap: 8 }}>
+              {activeLahan && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsLahanModalOpen(false);
+                    router.push('/(tabs)/lahan');
+                  }}
+                  activeOpacity={0.85}
+                  className="w-full bg-gray-100 border border-gray-200 py-3 rounded-2xl flex-row items-center justify-center"
+                >
+                  <Text className="text-xs font-bold text-gray-800">
+                    Ubah Data Pekarangan Ini
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                onPress={() => {
+                  setIsLahanModalOpen(false);
+                  router.push('/wizard-setup' as any);
+                }}
+                activeOpacity={0.85}
+                style={{ gap: 8 }}
+                className="w-full bg-[#124E2A] py-3.5 rounded-2xl flex-row items-center justify-center shadow-xs"
+              >
+                <Plus size={18} color="#FFFFFF" />
+                <Text className="text-xs font-black text-white">
+                  Tambah Pekarangan Baru
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

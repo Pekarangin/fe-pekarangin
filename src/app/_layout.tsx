@@ -21,6 +21,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="(auth)" />
+          <Stack.Screen name="wizard-setup" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="konsultasi" options={{ animation: 'slide_from_bottom' }} />
         </Stack>

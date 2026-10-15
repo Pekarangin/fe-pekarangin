@@ -41,6 +41,9 @@ interface AppContextType {
   activeLahan: Lahan | null;
   setActiveLahan: (lahan: Lahan) => void;
   saveLahan: (lahan: Omit<Lahan, 'lahan_id' | 'created_at'>) => Promise<Lahan>;
+  createLahan: (lahan: Omit<Lahan, 'lahan_id' | 'created_at'>) => Promise<Lahan>;
+  updateLahan: (id: string, lahan: Partial<Omit<Lahan, 'lahan_id' | 'created_at'>>) => Promise<Lahan>;
+  deleteLahan: (id: string) => Promise<void>;
   
   // Tanaman aktif state
   activeCrops: TanamanAktif[];
@@ -553,6 +556,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStats(EMPTY_STATS);
   };
 
+  const createLahan = async (newLahanData: Omit<Lahan, 'lahan_id' | 'created_at'>): Promise<Lahan> => {
+    let createdLahan: Lahan;
+    try {
+      createdLahan = await lahanService.create(newLahanData);
+    } catch (e) {
+      console.warn('API createLahan error, fallback ke local:', e);
+      createdLahan = {
+        ...newLahanData,
+        lahan_id: 'lah-' + Date.now(),
+        created_at: new Date().toISOString(),
+        jumlah_tanaman_aktif: 0,
+      };
+    }
+
+    setLahans(prev => [createdLahan, ...prev.filter(l => l.lahan_id !== createdLahan.lahan_id)]);
+    setActiveLahan(createdLahan);
+
+    setStats(prev => ({
+      ...prev,
+      rth_aktif_m2: Number(createdLahan.luas_m2.toFixed(2)),
+    }));
+
+    if (createdLahan.grid_snapshot && createdLahan.grid_snapshot.length > 0) {
+      lahanStorage.setGridSnapshot(createdLahan.lahan_id, createdLahan.grid_snapshot);
+    }
+
+    if (createdLahan.lahan_id && !createdLahan.lahan_id.startsWith('lah-')) {
+      rekomendasiService
+        .getByLahanId(createdLahan.lahan_id)
+        .then(res => {
+          if (res?.rekomendasi && res.rekomendasi.length > 0) {
+            const mapped = res.rekomendasi.map(item => ({
+              ...item,
+              image_url: item.image_url || getCropImage(item.nama),
+            }));
+            setRekomendasiList(mapped);
+          }
+        })
+        .catch(err => console.warn('Gagal ambil rekomendasi baru:', err));
+    }
+
+    return createdLahan;
+  };
+
+  const updateLahan = async (id: string, updateData: Partial<Omit<Lahan, 'lahan_id' | 'created_at'>>): Promise<Lahan> => {
+    let updatedLahan: Lahan;
+    try {
+      if (!id.startsWith('lah-')) {
+        updatedLahan = await lahanService.update(id, updateData);
+      } else {
+        throw new Error('Local lahan');
+      }
+    } catch (e) {
+      console.warn('API updateLahan error, fallback ke local:', e);
+      const existing = lahans.find(l => l.lahan_id === id) || activeLahan;
+      updatedLahan = {
+        ...existing!,
+        ...updateData,
+        lahan_id: id,
+        created_at: existing?.created_at || new Date().toISOString(),
+      };
+    }
+
+    setLahans(prev => prev.map(l => (l.lahan_id === id ? updatedLahan : l)));
+    if (activeLahan?.lahan_id === id) {
+      setActiveLahan(updatedLahan);
+      if (updatedLahan.luas_m2) {
+        setStats(prev => ({
+          ...prev,
+          rth_aktif_m2: Number(updatedLahan.luas_m2.toFixed(2)),
+        }));
+      }
+    }
+
+    if (updatedLahan.grid_snapshot && updatedLahan.grid_snapshot.length > 0) {
+      lahanStorage.setGridSnapshot(updatedLahan.lahan_id, updatedLahan.grid_snapshot);
+    }
+
+    return updatedLahan;
+  };
+
+  const deleteLahan = async (id: string): Promise<void> => {
+    try {
+      if (!id.startsWith('lah-')) {
+        await lahanService.delete(id);
+      }
+    } catch (e) {
+      console.warn('API deleteLahan error, fallback ke local:', e);
+    }
+
+    setLahans(prev => {
+      const remaining = prev.filter(l => l.lahan_id !== id);
+      if (activeLahan?.lahan_id === id) {
+        setActiveLahan(remaining.length > 0 ? remaining[0] : null);
+      }
+      return remaining;
+    });
+  };
+
   const saveLahan = async (newLahanData: Omit<Lahan, 'lahan_id' | 'created_at'>): Promise<Lahan> => {
     let createdLahan: Lahan;
     try {
@@ -874,6 +976,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeLahan,
         setActiveLahan,
         saveLahan,
+        createLahan,
+        updateLahan,
+        deleteLahan,
         activeCrops,
         toggleChecklistSiram,
         toggleChecklistPupuk,
