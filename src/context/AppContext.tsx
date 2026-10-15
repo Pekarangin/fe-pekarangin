@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { User, Lahan, TanamanAktif, RekomendasiItem, UserStats, CatatanHarian } from '../types';
+import { User, Lahan, TanamanAktif, RekomendasiItem, UserStats, CatatanHarian, KesesuaianSinar, TingkatKesulitan } from '../types';
 import {
   ReminderSchedule,
   DEFAULT_REMINDERS,
@@ -17,6 +17,8 @@ import {
   profileStorage,
   lahanStorage,
   onboardingStorage,
+  initStorageAsync,
+  userStorage,
 } from '../services/api';
 import { getCropImage } from '../constants/cropImages';
 
@@ -26,6 +28,7 @@ interface AppContextType {
   isAuthenticated: boolean;
   isOnboarded: boolean;
   setIsOnboarded: (val: boolean) => void;
+  isAuthLoading: boolean;
   login: (email: string, password?: string, nama?: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => void;
@@ -38,6 +41,9 @@ interface AppContextType {
   activeLahan: Lahan | null;
   setActiveLahan: (lahan: Lahan) => void;
   saveLahan: (lahan: Omit<Lahan, 'lahan_id' | 'created_at'>) => Promise<Lahan>;
+  createLahan: (lahan: Omit<Lahan, 'lahan_id' | 'created_at'>) => Promise<Lahan>;
+  updateLahan: (id: string, lahan: Partial<Omit<Lahan, 'lahan_id' | 'created_at'>>) => Promise<Lahan>;
+  deleteLahan: (id: string) => Promise<void>;
   
   // Tanaman aktif state
   activeCrops: TanamanAktif[];
@@ -51,6 +57,9 @@ interface AppContextType {
   
   // Rekomendasi state
   rekomendasiList: RekomendasiItem[];
+  isLoadingRekomendasi: boolean;
+  rekomendasiError: string | null;
+  refreshRekomendasi: () => Promise<void>;
   
   // Stats
   stats: UserStats;
@@ -64,149 +73,19 @@ interface AppContextType {
   deleteReminder: (id: string) => Promise<void>;
   triggerTestAlarm: (label?: string) => Promise<void>;
 
+  // Global Page Tour State
+  isTourActive: boolean;
+  setIsTourActive: (active: boolean) => void;
+  tourStep: 1 | 2 | 3 | 4 | 5;
+  setTourStep: (step: 1 | 2 | 3 | 4 | 5) => void;
+  startTour: () => void;
+  skipTour: () => void;
+
   // AI Insight
   askAiInsight: (message: string, cropId?: string) => Promise<{ reply: string; konteks_tanaman?: any }>;
 }
 
 
-const INITIAL_REKOMENDASI: RekomendasiItem[] = [
-  {
-    komoditas_id: 'kom-1',
-    nama: 'Cabai Rawit',
-    skor_prioritas: 4.8,
-    estimasi_hemat_rp_per_bulan: 45000,
-    waktu_panen_hari: 75,
-    luas_dibutuhkan_m2: 0.16,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 52000,
-    konsumsi_rt_kg_per_bulan: 0.8,
-    image_url: 'https://images.unsplash.com/photo-1588252303782-cb80119abd6d?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Tanam di area terpapar sinar penuh >6 jam. Gunakan pot/polybag 30cm dengan campuran tanah subur & kompos 2:1.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 14,
-    media_tanam: 'Polybag / Pot 30cm / Tanah Bedengan',
-  },
-  {
-    komoditas_id: 'kom-8',
-    nama: 'Sawi Hijau',
-    skor_prioritas: 4.2,
-    estimasi_hemat_rp_per_bulan: 35000,
-    waktu_panen_hari: 30,
-    luas_dibutuhkan_m2: 0.25,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 14000,
-    konsumsi_rt_kg_per_bulan: 2.5,
-    image_url: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Pertumbuhan sangat cepat. Siram rutin setiap pagi & sore. Sangat cocok ditanam bertingkat (vertikultur).',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 7,
-    media_tanam: 'Tray Semai, Pot Persegi, Hidroponik Sederhana',
-  },
-  {
-    komoditas_id: 'kom-4',
-    nama: 'Tomat Cherry',
-    skor_prioritas: 3.9,
-    estimasi_hemat_rp_per_bulan: 40000,
-    waktu_panen_hari: 60,
-    luas_dibutuhkan_m2: 0.35,
-    tingkat_kesulitan: 'SEDANG',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 28000,
-    konsumsi_rt_kg_per_bulan: 1.5,
-    image_url: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Pasang ajir/penyangga bambu saat tanaman mencapai 20cm. Berikan pupuk kalium saat mulai berbunga.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 10,
-    media_tanam: 'Pot Besar 35cm / Polybag',
-  },
-  {
-    komoditas_id: 'kom-5',
-    nama: 'Bayam Hijau',
-    skor_prioritas: 3.6,
-    estimasi_hemat_rp_per_bulan: 20000,
-    waktu_panen_hari: 25,
-    luas_dibutuhkan_m2: 0.25,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 10000,
-    konsumsi_rt_kg_per_bulan: 2.0,
-    image_url: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Tabur benih merata. Jaga kelembapan tanah agar kecambah cepat tumbuh. Panen cabut umur 25 hari.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 7,
-    media_tanam: 'Bedengan / Polybag Lebar',
-  },
-  {
-    komoditas_id: 'kom-6',
-    nama: 'Kangkung Darat',
-    skor_prioritas: 3.5,
-    estimasi_hemat_rp_per_bulan: 18000,
-    waktu_panen_hari: 25,
-    luas_dibutuhkan_m2: 0.25,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 12000,
-    konsumsi_rt_kg_per_bulan: 1.5,
-    image_url: 'https://images.unsplash.com/photo-1628771065518-0d82f1938462?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Sangat tangguh dan tahan cuaca panas. Bisa dipanen potong batang agar bertunas kembali hingga 3x panen.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 7,
-    media_tanam: 'Pot, Baskom Bekas, Bedengan',
-  },
-  {
-    komoditas_id: 'kom-3',
-    nama: 'Bawang Merah',
-    skor_prioritas: 3.4,
-    estimasi_hemat_rp_per_bulan: 32000,
-    waktu_panen_hari: 65,
-    luas_dibutuhkan_m2: 0.25,
-    tingkat_kesulitan: 'SEDANG',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 40000,
-    konsumsi_rt_kg_per_bulan: 1.0,
-    image_url: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Potong 1/3 ujung umbi sebelum tanam untuk percepat tunas. Hindari genangan air berlebih.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 14,
-    media_tanam: 'Polybag Tanah Gembur Berpasir',
-  },
-  {
-    komoditas_id: 'kom-14',
-    nama: 'Kemangi',
-    skor_prioritas: 3.2,
-    estimasi_hemat_rp_per_bulan: 15000,
-    waktu_panen_hari: 35,
-    luas_dibutuhkan_m2: 0.2,
-    tingkat_kesulitan: 'MUDAH',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 18000,
-    konsumsi_rt_kg_per_bulan: 0.6,
-    image_url: 'https://images.unsplash.com/photo-1608686207856-001b95cf60ca?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Petik pucuk daun secara berkala agar tanaman semakin rimbun dan tidak cepat berbunga tua.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 14,
-    media_tanam: 'Pot Kecil / Pekarangan Sudut',
-  },
-  {
-    komoditas_id: 'kom-10',
-    nama: 'Terong Ungu',
-    skor_prioritas: 3.0,
-    estimasi_hemat_rp_per_bulan: 25000,
-    waktu_panen_hari: 80,
-    luas_dibutuhkan_m2: 0.5,
-    tingkat_kesulitan: 'SEDANG',
-    kesesuaian_sinar: 'COCOK',
-    harga_pasar_per_kg: 15000,
-    konsumsi_rt_kg_per_bulan: 1.5,
-    image_url: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&q=80&w=600',
-    panduan_singkat: 'Butuh media tanah yang dalam dan kaya pupuk kandang. Lindungi dari hama kutu kebul.',
-    jadwal_siram_hari: 1,
-    jadwal_pupuk_hari: 14,
-    media_tanam: 'Polybag Besar 40cm / Tanah Terbuka',
-  }
-];
 
 const EMPTY_STATS: UserStats = {
   total_panen_kg: 0,
@@ -223,6 +102,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isOnboarded, setIsOnboardedState] = useState<boolean>(() => onboardingStorage.get());
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   const setIsOnboarded = useCallback((val: boolean) => {
     onboardingStorage.set(val);
@@ -232,7 +112,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [lahans, setLahans] = useState<Lahan[]>([]);
   const [activeLahan, setActiveLahan] = useState<Lahan | null>(null);
   const [activeCrops, setActiveCrops] = useState<TanamanAktif[]>([]);
-  const [rekomendasiList, setRekomendasiList] = useState<RekomendasiItem[]>(INITIAL_REKOMENDASI);
+  const [rekomendasiList, setRekomendasiList] = useState<RekomendasiItem[]>([]);
+  const [isLoadingRekomendasi, setIsLoadingRekomendasi] = useState<boolean>(true);
+  const [rekomendasiError, setRekomendasiError] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats>(EMPTY_STATS);
   const [catatanHistory] = useState<Record<string, CatatanHarian[]>>({});
   const [reminders, setReminders] = useState<ReminderSchedule[]>(DEFAULT_REMINDERS);
@@ -308,77 +190,167 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Check active session via GET /auth/me on mount
+  // Check active session and persisted state on mount
   useEffect(() => {
-    const token = tokenStorage.get();
-    if (token) {
-      authService
-        .getMe()
-        .then(profile => {
-          setUser({
-            user_id: profile.user_id,
-            nama: profile.nama,
-            email: profile.email,
-            wilayah: profileStorage.getWilayah() || '',
-            avatar_url: profile.avatar_url || null,
-            created_at: profile.created_at || new Date().toISOString(),
-          });
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const stored = await initStorageAsync();
+        if (!isMounted) return;
+
+        if (stored.onboarded) {
+          setIsOnboardedState(true);
+        }
+
+        if (stored.user && stored.token) {
+          setUser(stored.user);
           setIsAuthenticated(true);
-          fetchRemoteUserData();
-        })
-        .catch(() => {
-          tokenStorage.clear();
-        });
-    }
+        }
+      } catch (err) {
+        console.warn('initStorageAsync error:', err);
+      } finally {
+        if (isMounted) {
+          setIsAuthLoading(false);
+        }
+      }
+
+      // Background verify & refresh if token exists
+      const token = tokenStorage.get();
+      if (token) {
+        authService
+          .getMe()
+          .then(profile => {
+            if (!isMounted) return;
+            const savedWilayah = profile.wilayah || profileStorage.getWilayah() || '';
+            if (profile.wilayah) {
+              profileStorage.setWilayah(profile.wilayah);
+            }
+            const verifiedUser: User = {
+              user_id: profile.user_id,
+              nama: profile.nama,
+              email: profile.email,
+              wilayah: savedWilayah,
+              avatar_url: profile.avatar_url || null,
+              created_at: profile.created_at || new Date().toISOString(),
+            };
+            setUser(verifiedUser);
+            userStorage.set(verifiedUser);
+            setIsAuthenticated(true);
+            setIsOnboardedState(true);
+            fetchRemoteUserData();
+          })
+          .catch((err: any) => {
+            if (!isMounted) return;
+            if (err?.status === 401) {
+              tokenStorage.clear();
+              userStorage.clear();
+              setUser(null);
+              setIsAuthenticated(false);
+            }
+          });
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
   }, [fetchRemoteUserData]);
+
+  const fetchRekomendasiData = useCallback(async (): Promise<RekomendasiItem[] | null> => {
+    if (activeLahan?.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
+      const res = await rekomendasiService.getByLahanId(activeLahan.lahan_id);
+      if (res?.rekomendasi && res.rekomendasi.length > 0) {
+        return res.rekomendasi.map(item => ({
+          ...item,
+          image_url: item.image_url || getCropImage(item.nama),
+        }));
+      }
+      return null;
+    }
+    const data = await rekomendasiService.getAllKomoditas();
+    if (Array.isArray(data) && data.length > 0) {
+      const detailedList = await Promise.allSettled(
+        data.map(k => rekomendasiService.getKomoditasById(k.komoditas_id || (k as any).id))
+      );
+
+      return data.map((k: any, idx: number) => {
+        const detailSettled = detailedList[idx];
+        const detail = detailSettled.status === 'fulfilled' ? detailSettled.value : null;
+        const hargaPasar = detail?.harga_terkini?.harga_rp_per_kg || 25000;
+        const konsumsiRt = Number(k.konsumsi_rt_kg_per_bulan || k.konsumsiRtKgPerBulan || 1);
+        const estimasiHemat = Math.round(konsumsiRt * hargaPasar);
+
+        return {
+          komoditas_id: k.komoditas_id || k.id,
+          nama: k.nama,
+          skor_prioritas: Number(Math.max(3.5, 5 - idx * 0.1).toFixed(1)),
+          estimasi_hemat_rp_per_bulan: estimasiHemat,
+          waktu_panen_hari: k.waktu_panen_hari || k.waktuPanenHari || 45,
+          luas_dibutuhkan_m2: Number(k.luas_min_m2 || k.luasMinM2 || 0.25),
+          tingkat_kesulitan: (k.tingkat_kesulitan || k.tingkatKesulitan || 'MUDAH') as TingkatKesulitan,
+          kesesuaian_sinar: 'COCOK' as KesesuaianSinar,
+          harga_pasar_per_kg: hargaPasar,
+          konsumsi_rt_kg_per_bulan: konsumsiRt,
+          image_url: k.image_url || detail?.image_url || '',
+          panduan_singkat: k.panduan_singkat || detail?.panduan_singkat || 'Cocok ditanam di pekarangan rumah.',
+          jadwal_siram_hari: k.jadwal_siram_hari || detail?.jadwal_siram_hari || 1,
+          jadwal_pupuk_hari: k.jadwal_pupuk_hari || detail?.jadwal_pupuk_hari || 14,
+          media_tanam: 'Pot / Polybag / Bedengan',
+        };
+      });
+    }
+    return null;
+  }, [activeLahan]);
+
+  const refreshRekomendasi = useCallback(async () => {
+    setIsLoadingRekomendasi(true);
+    setRekomendasiError(null);
+    try {
+      const result = await fetchRekomendasiData();
+      if (result && result.length > 0) {
+        setRekomendasiList(result);
+        setRekomendasiError(null);
+      } else {
+        setRekomendasiList([]);
+      }
+    } catch (err: any) {
+      console.warn('Gagal ambil rekomendasi dari BE:', err);
+      setRekomendasiError(err?.message || 'Gagal memuat data dari server');
+    } finally {
+      setIsLoadingRekomendasi(false);
+    }
+  }, [fetchRekomendasiData]);
 
   // Auto-fetch remote recommendations when activeLahan changes, or load public commodities catalog
   useEffect(() => {
-    if (activeLahan?.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
-      rekomendasiService
-        .getByLahanId(activeLahan.lahan_id)
-        .then(res => {
-          if (res?.rekomendasi && res.rekomendasi.length > 0) {
-            const mapped = res.rekomendasi.map(item => ({
-              ...item,
-              image_url: item.image_url || getCropImage(item.nama),
-            }));
-            setRekomendasiList(mapped);
+    let isMounted = true;
+    fetchRekomendasiData()
+      .then(result => {
+        if (isMounted) {
+          if (result && result.length > 0) {
+            setRekomendasiList(result);
+            setRekomendasiError(null);
+          } else {
+            setRekomendasiList([]);
           }
-        })
-        .catch(err => {
-          console.warn('Gagal ambil rekomendasi dari BE, gunakan fallback lokal:', err);
-        });
-    } else {
-      rekomendasiService
-        .getAllKomoditas()
-        .then(data => {
-          if (Array.isArray(data) && data.length > 0) {
-            const mappedCatalog: RekomendasiItem[] = data.map((k: any, idx: number) => ({
-              komoditas_id: k.komoditas_id || k.id,
-              nama: k.nama,
-              skor_prioritas: Number(Math.max(3.5, 5 - idx * 0.1).toFixed(1)),
-              estimasi_hemat_rp_per_bulan: Math.round(Number(k.konsumsi_rt_kg_per_bulan || k.konsumsiRtKgPerBulan || 1) * 25000),
-              waktu_panen_hari: k.waktu_panen_hari || k.waktuPanenHari || 45,
-              luas_dibutuhkan_m2: Number(k.luas_min_m2 || k.luasMinM2 || 0.25),
-              tingkat_kesulitan: k.tingkat_kesulitan || k.tingkatKesulitan || 'MUDAH',
-              kesesuaian_sinar: 'COCOK',
-              harga_pasar_per_kg: 25000,
-              konsumsi_rt_kg_per_bulan: Number(k.konsumsi_rt_kg_per_bulan || k.konsumsiRtKgPerBulan || 1),
-              image_url: getCropImage(k.nama),
-              panduan_singkat: k.panduan_singkat || k.panduanSingkat || 'Cocok ditanam di pekarangan rumah.',
-              jadwal_siram_hari: k.jadwal_siram_hari || k.jadwalSiramHari || 1,
-              jadwal_pupuk_hari: k.jadwal_pupuk_hari || k.jadwalPupukHari || 14,
-              media_tanam: 'Pot / Polybag / Bedengan',
-            }));
-            setRekomendasiList(mappedCatalog);
-          }
-        })
-        .catch(err => {
-          console.warn('Gagal ambil katalog komoditas publik dari BE:', err);
-        });
-    }
-  }, [activeLahan?.lahan_id, activeLahan?.paparan_sinar, activeLahan?.luas_m2]);
+        }
+      })
+      .catch((err: any) => {
+        console.warn('Gagal sinkron rekomendasi awal:', err);
+        if (isMounted) {
+          setRekomendasiError(err?.message || 'Gagal memuat data dari server');
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingRekomendasi(false);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchRekomendasiData]);
 
   const updateReminderTime = async (id: string, hour: number, minute: number) => {
     setReminders(prev =>
@@ -448,16 +420,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const login = async (email: string, password?: string, nama?: string) => {
     try {
       const data = await authService.login(email, password || 'password123');
-      const savedWilayah = profileStorage.getWilayah() || '';
-      setUser({
+      const savedWilayah = data.wilayah || profileStorage.getWilayah() || '';
+      if (data.wilayah) {
+        profileStorage.setWilayah(data.wilayah);
+      }
+      const loggedInUser: User = {
         user_id: data.user_id,
         nama: data.nama || nama || email.split('@')[0],
         email: data.email,
         wilayah: savedWilayah,
         avatar_url: data.avatar_url || null,
         created_at: new Date().toISOString(),
-      });
+      };
+      setUser(loggedInUser);
+      userStorage.set(loggedInUser);
       setIsAuthenticated(true);
+      setIsOnboarded(true);
       setLahans([]);
       setActiveLahan(null);
       setActiveCrops([]);
@@ -468,15 +446,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw e;
       }
       console.warn('API login error, fallback ke local state:', e);
-      setUser({
+      const fallbackUser: User = {
         user_id: 'usr-' + Date.now(),
         nama: nama || email.split('@')[0],
         email: email,
         wilayah: profileStorage.getWilayah() || '',
         avatar_url: null,
         created_at: new Date().toISOString(),
-      });
+      };
+      setUser(fallbackUser);
+      userStorage.set(fallbackUser);
       setIsAuthenticated(true);
+      setIsOnboarded(true);
       setLahans([]);
       setActiveLahan(null);
       setActiveCrops([]);
@@ -489,15 +470,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('Google ID Token tidak ditemukan.');
     }
     const data = await authService.loginWithGoogle(idToken);
-    setUser({
+    const savedWilayah = data.wilayah || profileStorage.getWilayah() || '';
+    if (data.wilayah) {
+      profileStorage.setWilayah(data.wilayah);
+    }
+    const loggedInUser: User = {
       user_id: data.user_id,
       nama: data.nama,
       email: data.email,
-      wilayah: profileStorage.getWilayah() || '',
+      wilayah: savedWilayah,
       avatar_url: data.avatar_url || null,
       created_at: new Date().toISOString(),
-    });
+    };
+    setUser(loggedInUser);
+    userStorage.set(loggedInUser);
     setIsAuthenticated(true);
+    setIsOnboarded(true);
     setLahans([]);
     setActiveLahan(null);
     setActiveCrops([]);
@@ -510,16 +498,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       profileStorage.setWilayah(wilayah);
     }
     try {
-      const data = await authService.register(nama, email, password || 'password123');
-      setUser({
+      const data = await authService.register(nama, email, password || 'password123', wilayah);
+      const savedWilayah = data.wilayah || wilayah || '';
+      if (savedWilayah) {
+        profileStorage.setWilayah(savedWilayah);
+      }
+      const registeredUser: User = {
         user_id: data.user_id,
         nama: data.nama,
         email: data.email,
-        wilayah: wilayah || '',
+        wilayah: savedWilayah,
         avatar_url: data.avatar_url || null,
         created_at: new Date().toISOString(),
-      });
+      };
+      setUser(registeredUser);
+      userStorage.set(registeredUser);
       setIsAuthenticated(true);
+      setIsOnboarded(true);
       setLahans([]);
       setActiveLahan(null);
       setActiveCrops([]);
@@ -530,15 +525,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw e;
       }
       console.warn('API register error, fallback ke local state:', e);
-      setUser({
+      const fallbackUser: User = {
         user_id: 'usr-' + Date.now(),
         nama: nama || 'Pengguna',
         email: email,
         wilayah: wilayah || '',
         avatar_url: null,
         created_at: new Date().toISOString(),
-      });
+      };
+      setUser(fallbackUser);
+      userStorage.set(fallbackUser);
       setIsAuthenticated(true);
+      setIsOnboarded(true);
       setLahans([]);
       setActiveLahan(null);
       setActiveCrops([]);
@@ -548,6 +546,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = () => {
     authService.logout();
+    userStorage.clear();
     profileStorage.clear();
     setUser(null);
     setIsAuthenticated(false);
@@ -555,6 +554,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveLahan(null);
     setActiveCrops([]);
     setStats(EMPTY_STATS);
+  };
+
+  const createLahan = async (newLahanData: Omit<Lahan, 'lahan_id' | 'created_at'>): Promise<Lahan> => {
+    let createdLahan: Lahan;
+    try {
+      createdLahan = await lahanService.create(newLahanData);
+    } catch (e) {
+      console.warn('API createLahan error, fallback ke local:', e);
+      createdLahan = {
+        ...newLahanData,
+        lahan_id: 'lah-' + Date.now(),
+        created_at: new Date().toISOString(),
+        jumlah_tanaman_aktif: 0,
+      };
+    }
+
+    setLahans(prev => [createdLahan, ...prev.filter(l => l.lahan_id !== createdLahan.lahan_id)]);
+    setActiveLahan(createdLahan);
+
+    setStats(prev => ({
+      ...prev,
+      rth_aktif_m2: Number(createdLahan.luas_m2.toFixed(2)),
+    }));
+
+    if (createdLahan.grid_snapshot && createdLahan.grid_snapshot.length > 0) {
+      lahanStorage.setGridSnapshot(createdLahan.lahan_id, createdLahan.grid_snapshot);
+    }
+
+    if (createdLahan.lahan_id && !createdLahan.lahan_id.startsWith('lah-')) {
+      rekomendasiService
+        .getByLahanId(createdLahan.lahan_id)
+        .then(res => {
+          if (res?.rekomendasi && res.rekomendasi.length > 0) {
+            const mapped = res.rekomendasi.map(item => ({
+              ...item,
+              image_url: item.image_url || getCropImage(item.nama),
+            }));
+            setRekomendasiList(mapped);
+          }
+        })
+        .catch(err => console.warn('Gagal ambil rekomendasi baru:', err));
+    }
+
+    return createdLahan;
+  };
+
+  const updateLahan = async (id: string, updateData: Partial<Omit<Lahan, 'lahan_id' | 'created_at'>>): Promise<Lahan> => {
+    let updatedLahan: Lahan;
+    try {
+      if (!id.startsWith('lah-')) {
+        updatedLahan = await lahanService.update(id, updateData);
+      } else {
+        throw new Error('Local lahan');
+      }
+    } catch (e) {
+      console.warn('API updateLahan error, fallback ke local:', e);
+      const existing = lahans.find(l => l.lahan_id === id) || activeLahan;
+      updatedLahan = {
+        ...existing!,
+        ...updateData,
+        lahan_id: id,
+        created_at: existing?.created_at || new Date().toISOString(),
+      };
+    }
+
+    setLahans(prev => prev.map(l => (l.lahan_id === id ? updatedLahan : l)));
+    if (activeLahan?.lahan_id === id) {
+      setActiveLahan(updatedLahan);
+      if (updatedLahan.luas_m2) {
+        setStats(prev => ({
+          ...prev,
+          rth_aktif_m2: Number(updatedLahan.luas_m2.toFixed(2)),
+        }));
+      }
+    }
+
+    if (updatedLahan.grid_snapshot && updatedLahan.grid_snapshot.length > 0) {
+      lahanStorage.setGridSnapshot(updatedLahan.lahan_id, updatedLahan.grid_snapshot);
+    }
+
+    return updatedLahan;
+  };
+
+  const deleteLahan = async (id: string): Promise<void> => {
+    try {
+      if (!id.startsWith('lah-')) {
+        await lahanService.delete(id);
+      }
+    } catch (e) {
+      console.warn('API deleteLahan error, fallback ke local:', e);
+    }
+
+    setLahans(prev => {
+      const remaining = prev.filter(l => l.lahan_id !== id);
+      if (activeLahan?.lahan_id === id) {
+        setActiveLahan(remaining.length > 0 ? remaining[0] : null);
+      }
+      return remaining;
+    });
   };
 
   const saveLahan = async (newLahanData: Omit<Lahan, 'lahan_id' | 'created_at'>): Promise<Lahan> => {
@@ -724,11 +822,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addTanamanAktif = async (komoditasId: string, komoditasNama: string) => {
+    if (!activeLahan) {
+      throw new Error('Belum ada lahan aktif. Silakan buat atau pilih lahan terlebih dahulu sebelum menanam.');
+    }
+
     const matched = rekomendasiList.find(r => r.komoditas_id === komoditasId);
     let newCrop: TanamanAktif;
 
     try {
-      if (activeLahan?.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
+      if (activeLahan.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
         const created = await trackingService.create({
           lahan_id: activeLahan.lahan_id,
           komoditas_id: komoditasId,
@@ -762,8 +864,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newCrop = {
         tanaman_aktif_id: 'crop-' + Date.now(),
         user_id: user?.user_id || 'usr-1',
-        lahan_id: activeLahan?.lahan_id || 'lah-1',
-        lahan_nama: activeLahan?.nama_lahan || 'Pekarangan Utama',
+        lahan_id: activeLahan.lahan_id,
+        lahan_nama: activeLahan.nama_lahan,
         komoditas_id: komoditasId,
         komoditas_nama: komoditasNama,
         tanggal_tanam: new Date().toISOString().split('T')[0],
@@ -787,6 +889,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveLahan(prev => (prev ? { ...prev, jumlah_tanaman_aktif: (prev.jumlah_tanaman_aktif || 0) + 1 } : null));
     }
   };
+
+  const [isTourActive, setIsTourActive] = useState<boolean>(false);
+  const [tourStep, setTourStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+
+  const startTour = useCallback(() => {
+    setIsTourActive(true);
+    setTourStep(1);
+  }, []);
+
+  const skipTour = useCallback(() => {
+    setIsTourActive(false);
+    setTourStep(1);
+  }, []);
 
   const recordPanen = async (cropId: string, beratGram: number): Promise<{ hematRp: number; tanamanNama: string }> => {
     const targetCrop = activeCrops.find(c => c.tanaman_aktif_id === cropId);
@@ -840,7 +955,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const askAiInsight = async (message: string, cropId?: string) => {
-    return aiInsightService.chat(message, cropId);
+    return aiInsightService.chat(message, cropId, user?.nama);
   };
 
   return (
@@ -851,6 +966,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthenticated,
         isOnboarded,
         setIsOnboarded,
+        isAuthLoading,
         login,
         loginWithGoogle,
         logout,
@@ -860,6 +976,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeLahan,
         setActiveLahan,
         saveLahan,
+        createLahan,
+        updateLahan,
+        deleteLahan,
         activeCrops,
         toggleChecklistSiram,
         toggleChecklistPupuk,
@@ -869,6 +988,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recordPanen,
         recordGagal,
         rekomendasiList,
+        isLoadingRekomendasi,
+        rekomendasiError,
+        refreshRekomendasi,
         stats,
         catatanHistory,
         reminders,
@@ -877,6 +999,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCustomReminder,
         deleteReminder,
         triggerTestAlarm,
+        isTourActive,
+        setIsTourActive,
+        tourStep,
+        setTourStep,
+        startTour,
+        skipTour,
         askAiInsight,
       }}
     >

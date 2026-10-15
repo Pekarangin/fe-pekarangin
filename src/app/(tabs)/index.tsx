@@ -5,8 +5,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   MapPin,
@@ -21,25 +22,55 @@ import {
   Plus,
   ArrowRight,
   Check,
+  ChevronDown,
+  Layers,
+  X,
+  CheckCircle2,
+  ExternalLink,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { Badge } from '../../components/ui/Badge';
 import { getCropImageSource } from '../../constants/cropImages';
 import { fetchLiveWeather, RealWeather } from '../../services/weather';
+import { PaparanSinar } from '../../types';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { welcome } = useLocalSearchParams<{ welcome?: string }>();
   const {
     user,
     stats,
+    lahans,
     activeCrops,
     activeLahan,
+    setActiveLahan,
     toggleAllSiram,
     toggleAllPupuk,
+    startTour,
   } = useApp();
 
   const [weather, setWeather] = useState<RealWeather | null>(null);
+  const [isLahanModalOpen, setIsLahanModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (welcome === 'true') {
+      startTour();
+    }
+  }, [welcome, startTour]);
+
+  const formatPaparanSinar = (sinar?: PaparanSinar) => {
+    switch (sinar) {
+      case 'FULL_SUN':
+        return 'Sinar Penuh';
+      case 'PARTIAL_SUN':
+        return 'Sinar Sebagian';
+      case 'SHADE':
+        return 'Teduh';
+      default:
+        return 'Sinar Penuh';
+    }
+  };
 
   const activeOnlyCrops = activeCrops.filter(c => c.status === 'AKTIF');
   const isSiramDone =
@@ -101,18 +132,27 @@ export default function DashboardHomeScreen() {
       >
         {/* Top Bar: Location & User Profile Avatar */}
         <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-row items-center bg-white px-3 py-1.5 rounded-full border border-gray-200/80 shadow-2xs max-w-[70%]">
-            <View className="w-5 h-5 rounded-full bg-emerald-100 items-center justify-center mr-1.5">
+          <View
+            style={{ flex: 1, marginRight: 10 }}
+            className="flex-row items-center bg-white px-3 py-1.5 rounded-full border border-gray-200/80 shadow-2xs"
+          >
+            <View
+              style={{ flexShrink: 0 }}
+              className="w-5 h-5 rounded-full bg-emerald-100 items-center justify-center mr-1.5"
+            >
               <MapPin size={12} color="#166534" />
             </View>
-            <View>
-              <Text className="text-[11px] font-bold text-gray-800" numberOfLines={1}>
-                {user?.wilayah || weather?.locationName || 'Lokasi Pekarangan'}
-              </Text>
-            </View>
+            <Text
+              style={{ flex: 1 }}
+              className="text-[11px] font-bold text-gray-800"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {user?.wilayah || weather?.locationName || 'Lokasi Pekarangan'}
+            </Text>
           </View>
 
-          <View style={{ gap: 8 }} className="flex-row items-center">
+          <View style={{ gap: 8, flexShrink: 0 }} className="flex-row items-center">
             {/* Real Weather Mini Pill */}
             {weather && (
               <View className="flex-row items-center bg-amber-50/90 border border-amber-200/90 px-2.5 py-1.5 rounded-full">
@@ -144,14 +184,114 @@ export default function DashboardHomeScreen() {
           </View>
         </View>
 
-        {/* Greeting Section */}
-        <View className="mb-4">
-          <Text className="text-[26px] font-black text-gray-900 tracking-tight">
-            Halo, {user?.nama ? user.nama.split(' ')[0] : 'Sobat'} 🌱
-          </Text>
-          <Text className="text-xs font-semibold text-gray-500 mt-0.5">
-            Pekarangan pangan mandiri Anda siap dipantau hari ini.
-          </Text>
+        {/* Greeting Section with Interactive Feature Tour Button */}
+        <View className="mb-4 flex-row items-center justify-between">
+          <View className="flex-1 mr-2">
+            <Text className="text-[26px] font-black text-gray-900 tracking-tight">
+              Halo, {user?.nama ? user.nama.split(' ')[0] : 'Sobat'} 🌱
+            </Text>
+            <Text className="text-xs font-semibold text-gray-500 mt-0.5">
+              Pekarangan pangan mandiri Anda siap dipantau hari ini.
+            </Text>
+          </View>
+
+          {/* Quick Trigger: Interactive Feature Tour */}
+          <TouchableOpacity
+            onPress={startTour}
+            activeOpacity={0.8}
+            className="flex-row items-center bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-300 shadow-2xs"
+          >
+            <Sparkles size={13} color="#15803D" />
+            <Text className="text-[11px] font-black text-emerald-800 ml-1">
+              Tur Fitur
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Pekarangan Header / Switcher Card */}
+        <View className="mb-5">
+          {activeLahan ? (
+            <View className="bg-white rounded-3xl p-4 border border-emerald-100 shadow-sm shadow-emerald-950/5">
+              <View className="flex-row items-center justify-between">
+                <TouchableOpacity
+                  onPress={() => setIsLahanModalOpen(true)}
+                  activeOpacity={0.8}
+                  className="flex-row items-center flex-1 mr-2"
+                >
+                  <View className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 items-center justify-center mr-3">
+                    <Trees size={20} color="#166534" />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center">
+                      <Text className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">
+                        Pekarangan Aktif
+                      </Text>
+                      {lahans.length > 1 && (
+                        <View className="bg-emerald-100 px-1.5 py-0.2 rounded-full ml-1.5">
+                          <Text className="text-[9px] font-bold text-emerald-800">
+                            {lahans.length} Lahan
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View className="flex-row items-center mt-0.5">
+                      <Text className="text-sm font-black text-gray-900 mr-1" numberOfLines={1}>
+                        🌱 {activeLahan.nama_lahan}
+                      </Text>
+                      <ChevronDown size={14} color="#4B5563" />
+                    </View>
+                    <Text className="text-[11px] font-medium text-gray-500 mt-0.5">
+                      {activeLahan.luas_m2} m² • {formatPaparanSinar(activeLahan.paparan_sinar)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                <View className="flex-row items-center gap-1.5">
+                  <TouchableOpacity
+                    onPress={() => router.push('/(tabs)/lahan')}
+                    activeOpacity={0.8}
+                    className="px-3 py-1.5 rounded-xl bg-gray-100 border border-gray-200 items-center justify-center"
+                  >
+                    <Text className="text-[10px] font-bold text-gray-700">
+                      Ubah
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => setIsLahanModalOpen(true)}
+                    activeOpacity={0.8}
+                    className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 items-center justify-center"
+                  >
+                    <Layers size={14} color="#166534" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => router.push('/wizard-setup' as any)}
+              activeOpacity={0.9}
+              className="bg-emerald-900 rounded-3xl p-5 border border-emerald-700/60 shadow-md shadow-emerald-950/20 flex-row items-center justify-between"
+            >
+              <View className="flex-1 mr-3">
+                <View className="flex-row items-center mb-1">
+                  <Sparkles size={14} color="#4ADE80" />
+                  <Text className="text-xs font-black text-emerald-200 ml-1.5 uppercase tracking-wide">
+                    Setup Pekarangan Pertama
+                  </Text>
+                </View>
+                <Text className="text-base font-black text-white">
+                  Mulai Sketsa Lahan & Tentukan Sinar
+                </Text>
+                <Text className="text-xs text-emerald-100/80 mt-1 leading-relaxed">
+                  Tentukan ukuran pekarangan dan sinar matahari untuk mengaktifkan rekomendasi AI dan checklist harian.
+                </Text>
+              </View>
+              <View className="w-10 h-10 rounded-2xl bg-emerald-500 items-center justify-center shadow-xs">
+                <Plus size={18} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Hero Green Stats Card (Modern Deep Emerald) */}
@@ -245,33 +385,33 @@ export default function DashboardHomeScreen() {
           activeOpacity={0.88}
           className="bg-amber-50/90 border border-amber-200 rounded-3xl p-4 mb-5 flex-row items-center justify-between shadow-2xs"
         >
-          <View className="flex-row items-center flex-1 mr-2">
-            <View className="w-10 h-10 rounded-2xl bg-amber-500 items-center justify-center mr-3 shadow-xs">
-              <Sun size={20} color="#FFFFFF" strokeWidth={2.4} />
-            </View>
-            <View className="flex-1">
-              <View className="flex-row items-center">
-                <Text className="text-xs font-black text-amber-950">
-                  {weather ? `${weather.temperature}°C ${weather.conditionText}` : 'Memuat Cuaca Real-Time...'}
-                </Text>
-                <View className="bg-amber-200/90 px-1.5 py-0.5 rounded-md ml-2">
-                  <Text className="text-[9px] font-extrabold text-amber-900">
-                    {weather?.badgeLabel || 'Real-Time'}
-                  </Text>
-                </View>
+            <View className="flex-row items-center flex-1 mr-2">
+              <View className="w-10 h-10 rounded-2xl bg-amber-500 items-center justify-center mr-3 shadow-xs">
+                <Sun size={20} color="#FFFFFF" strokeWidth={2.4} />
               </View>
-              <Text className="text-[11px] text-amber-900/80 font-medium mt-0.5 leading-snug">
-                {weather?.advisoryText || 'Memantau iklim dan suhu terkini di pekarangan Anda.'}
-              </Text>
-              {weather && (
-                <Text className="text-[10px] text-amber-800/70 font-semibold mt-1">
-                  📍 {weather.locationName} • Kelembapan {weather.humidity}%
+              <View className="flex-1">
+                <View className="flex-row items-center">
+                  <Text className="text-xs font-black text-amber-950">
+                    {weather ? `${weather.temperature}°C ${weather.conditionText}` : 'Memuat Cuaca Real-Time...'}
+                  </Text>
+                  <View className="bg-amber-200/90 px-1.5 py-0.5 rounded-md ml-2">
+                    <Text className="text-[9px] font-extrabold text-amber-900">
+                      {weather?.badgeLabel || 'Real-Time'}
+                    </Text>
+                  </View>
+                </View>
+                <Text className="text-[11px] text-amber-900/80 font-medium mt-0.5 leading-snug">
+                  {weather?.advisoryText || 'Memantau iklim dan suhu terkini di pekarangan Anda.'}
                 </Text>
-              )}
+                {weather && (
+                  <Text className="text-[10px] text-amber-800/70 font-semibold mt-1">
+                    📍 {weather.locationName} • Kelembapan {weather.humidity}%
+                  </Text>
+                )}
+              </View>
             </View>
-          </View>
-          <ChevronRight size={16} color="#D97706" />
-        </TouchableOpacity>
+            <ChevronRight size={16} color="#D97706" />
+          </TouchableOpacity>
 
         {/* Quick Stepper Guide: Alur Panduan Pintar */}
         <View className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm shadow-black/5 mb-5">
@@ -573,6 +713,136 @@ export default function DashboardHomeScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Pekarangan Switcher Bottom Sheet Modal */}
+      <Modal
+        visible={isLahanModalOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsLahanModalOpen(false)}
+      >
+        <View className="flex-1 bg-black/65 justify-end">
+          <View
+            style={{
+              maxHeight: '85%',
+              paddingBottom: Math.max(insets.bottom, 20),
+            }}
+            className="bg-white rounded-t-[36px] w-full p-6 shadow-2xl"
+          >
+            {/* Modal Header */}
+            <View className="flex-row items-center justify-between pb-4 border-b border-gray-100 mb-4">
+              <View className="flex-row items-center">
+                <View className="w-9 h-9 rounded-2xl bg-emerald-100 items-center justify-center mr-2.5">
+                  <Trees size={18} color="#166534" />
+                </View>
+                <View>
+                  <Text className="text-base font-black text-gray-900">
+                    Pilih & Kelola Pekarangan
+                  </Text>
+                  <Text className="text-[11px] font-medium text-gray-500">
+                    Tentukan pekarangan yang sedang Anda tinjau
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsLahanModalOpen(false)}
+                activeOpacity={0.7}
+                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+              >
+                <X size={16} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* List Lahans */}
+            <ScrollView showsVerticalScrollIndicator={false} className="max-h-80 mb-4">
+              {lahans.length === 0 ? (
+                <View className="py-6 items-center">
+                  <Text className="text-xs font-semibold text-gray-400">
+                    Belum ada pekarangan terdaftar
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  {lahans.map(lahan => {
+                    const isActive = activeLahan?.lahan_id === lahan.lahan_id;
+                    return (
+                      <TouchableOpacity
+                        key={lahan.lahan_id}
+                        onPress={() => {
+                          setActiveLahan(lahan);
+                          setIsLahanModalOpen(false);
+                        }}
+                        activeOpacity={0.8}
+                        className={`p-4 rounded-2xl border flex-row items-center justify-between ${
+                          isActive
+                            ? 'bg-emerald-50/70 border-emerald-400'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <View className="flex-1 mr-2">
+                          <View className="flex-row items-center">
+                            <Text className="text-sm font-black text-gray-900" numberOfLines={1}>
+                              🌱 {lahan.nama_lahan}
+                            </Text>
+                            {isActive && (
+                              <View className="bg-emerald-600 px-2 py-0.5 rounded-full ml-2">
+                                <Text className="text-[9px] font-bold text-white">
+                                  Aktif
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text className="text-xs text-gray-500 mt-1 font-medium">
+                            {lahan.luas_m2} m² • {formatPaparanSinar(lahan.paparan_sinar)}
+                          </Text>
+                        </View>
+                        {isActive ? (
+                          <CheckCircle2 size={20} color="#166534" />
+                        ) : (
+                          <Circle size={18} color="#9CA3AF" />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Action Buttons */}
+            <View style={{ gap: 8 }}>
+              {activeLahan && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsLahanModalOpen(false);
+                    router.push('/(tabs)/lahan');
+                  }}
+                  activeOpacity={0.85}
+                  className="w-full bg-gray-100 border border-gray-200 py-3 rounded-2xl flex-row items-center justify-center"
+                >
+                  <Text className="text-xs font-bold text-gray-800">
+                    Ubah Data Pekarangan Ini
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                onPress={() => {
+                  setIsLahanModalOpen(false);
+                  router.push('/wizard-setup' as any);
+                }}
+                activeOpacity={0.85}
+                style={{ gap: 8 }}
+                className="w-full bg-[#124E2A] py-3.5 rounded-2xl flex-row items-center justify-center shadow-xs"
+              >
+                <Plus size={18} color="#FFFFFF" />
+                <Text className="text-xs font-black text-white">
+                  Tambah Pekarangan Baru
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

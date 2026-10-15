@@ -6,6 +6,7 @@ export interface AuthUserData {
   nama: string;
   email: string;
   token: string;
+  wilayah?: string;
   avatar_url?: string | null;
   is_new_user?: boolean;
 }
@@ -14,15 +15,26 @@ export interface UserProfile {
   user_id: string;
   nama: string;
   email: string;
+  wilayah?: string;
   avatar_url?: string | null;
   created_at?: string;
 }
 
 export const authService = {
-  register: async (nama: string, email: string, password: string): Promise<AuthUserData> => {
+  register: async (
+    nama: string,
+    email: string,
+    password: string,
+    wilayah?: string
+  ): Promise<AuthUserData> => {
     const data = await request<AuthUserData>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ nama, email, password }),
+      body: JSON.stringify({
+        nama,
+        email,
+        password,
+        ...(wilayah ? { wilayah } : {}),
+      }),
     });
     if (data.token) {
       tokenStorage.set(data.token);

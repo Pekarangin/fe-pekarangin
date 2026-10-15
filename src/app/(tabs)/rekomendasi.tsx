@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Image,
   Modal,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +25,9 @@ import {
   Sprout,
   X,
   BookOpen,
+  WifiOff,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { Badge } from '../../components/ui/Badge';
@@ -33,12 +38,21 @@ import { getCropImageSource } from '../../constants/cropImages';
 export default function RekomendasiTab() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { activeLahan, rekomendasiList, addTanamanAktif, activeCrops } = useApp();
+  const {
+    activeLahan,
+    rekomendasiList,
+    addTanamanAktif,
+    activeCrops,
+    isLoadingRekomendasi,
+    rekomendasiError,
+    refreshRekomendasi,
+  } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'MUDAH' | 'SEDANG'>('ALL');
   const [plantingId, setPlantingId] = useState<string | null>(null);
   const [plantedSuccessId, setPlantedSuccessId] = useState<string | null>(null);
   const [selectedDetailItem, setSelectedDetailItem] = useState<RekomendasiItem | null>(null);
+  const [showNoLahanModal, setShowNoLahanModal] = useState(false);
 
   const filteredList = rekomendasiList.filter(item => {
     if (selectedCategory === 'ALL') return true;
@@ -50,6 +64,10 @@ export default function RekomendasiTab() {
   };
 
   const handlePlant = async (item: RekomendasiItem) => {
+    if (!activeLahan) {
+      setShowNoLahanModal(true);
+      return;
+    }
     setPlantingId(item.komoditas_id);
     try {
       await addTanamanAktif(item.komoditas_id, item.nama);
@@ -84,6 +102,14 @@ export default function RekomendasiTab() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 110 }}
         className="px-5 pt-2"
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoadingRekomendasi}
+            onRefresh={refreshRekomendasi}
+            colors={['#1C7430']}
+            tintColor="#1C7430"
+          />
+        }
       >
         {/* Screen Header */}
         <View className="flex-row items-center mb-4">
@@ -131,6 +157,20 @@ export default function RekomendasiTab() {
                 Buat sketsa lahan di tab Lahan agar AI Pekarang dapat menghitung ranking prioritas & estimasi hemat khusus kondisi pekarangan Anda.
               </Text>
             </View>
+          </View>
+        )}
+
+        {rekomendasiError && filteredList.length > 0 && (
+          <View className="bg-amber-50 border border-amber-200/80 p-3 rounded-2xl mb-4 flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1 mr-2">
+              <AlertCircle size={16} color="#D97706" />
+              <Text className="text-xs text-amber-800 ml-2 flex-1" numberOfLines={2}>
+                Koneksi server terganggu. Menampilkan data tersimpan.
+              </Text>
+            </View>
+            <TouchableOpacity onPress={refreshRekomendasi} className="px-2.5 py-1 bg-amber-600 rounded-lg">
+              <Text className="text-[11px] font-bold text-white">Muat Ulang</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -193,7 +233,80 @@ export default function RekomendasiTab() {
         </ScrollView>
 
         {/* Recommendations List */}
-        <View className="space-y-4">
+        {isLoadingRekomendasi && filteredList.length === 0 ? (
+          <View className="py-16 items-center justify-center bg-white rounded-3xl border border-gray-100 shadow-xs px-6 my-2">
+            <View className="w-14 h-14 rounded-2xl bg-green-50 items-center justify-center mb-4">
+              <ActivityIndicator size="small" color="#1C7430" />
+            </View>
+            <Text className="text-base font-bold text-gray-900 text-center">
+              Menghitung Rekomendasi...
+            </Text>
+            <Text className="text-xs text-gray-500 mt-1.5 text-center leading-relaxed max-w-xs">
+              Menganalisis kecocokan tanaman dengan luas pekarangan dan harga pasar terkini.
+            </Text>
+          </View>
+        ) : rekomendasiError && filteredList.length === 0 ? (
+          <View className="py-14 px-6 items-center justify-center bg-white rounded-3xl border border-red-100 shadow-xs my-2">
+            <View className="w-16 h-16 rounded-full bg-red-50 items-center justify-center mb-4">
+              <WifiOff size={28} color="#DC2626" />
+            </View>
+            <Text className="text-base font-black text-gray-900 text-center">
+              Gagal Memuat Rekomendasi
+            </Text>
+            <Text className="text-xs text-gray-500 mt-2 text-center leading-relaxed max-w-xs">
+              Tidak dapat terhubung ke server backend. Periksa koneksi internet Anda atau coba muat ulang data.
+            </Text>
+            <TouchableOpacity
+              onPress={refreshRekomendasi}
+              activeOpacity={0.85}
+              className="mt-6 flex-row items-center bg-[#1C7430] px-5 py-3 rounded-2xl shadow-sm shadow-[#1C7430]/25"
+            >
+              <RefreshCw size={15} color="#FFFFFF" />
+              <Text className="text-xs font-bold text-white ml-2">
+                Coba Muat Ulang
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : filteredList.length === 0 ? (
+          <View className="py-14 px-6 items-center justify-center bg-white rounded-3xl border border-gray-100 shadow-xs my-2">
+            <View className="w-16 h-16 rounded-full bg-green-50 items-center justify-center mb-4">
+              <Sprout size={28} color="#1C7430" />
+            </View>
+            <Text className="text-base font-black text-gray-900 text-center">
+              {selectedCategory !== 'ALL'
+                ? 'Tidak Ada Tanaman di Kategori Ini'
+                : 'Belum Ada Rekomendasi Tersedia'}
+            </Text>
+            <Text className="text-xs text-gray-500 mt-2 text-center leading-relaxed max-w-xs">
+              {selectedCategory !== 'ALL'
+                ? 'Coba pilih kategori filter lain untuk melihat komoditas tanaman.'
+                : 'Belum ada data tanaman yang cocok dengan profil lahan Anda saat ini.'}
+            </Text>
+            {selectedCategory !== 'ALL' ? (
+              <TouchableOpacity
+                onPress={() => setSelectedCategory('ALL')}
+                activeOpacity={0.85}
+                className="mt-5 bg-green-50 border border-green-200 px-4 py-2.5 rounded-xl"
+              >
+                <Text className="text-xs font-bold text-[#1C7430]">
+                  Tampilkan Semua Tanaman
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={refreshRekomendasi}
+                activeOpacity={0.85}
+                className="mt-5 flex-row items-center bg-[#1C7430] px-4 py-2.5 rounded-xl"
+              >
+                <RefreshCw size={14} color="#FFFFFF" />
+                <Text className="text-xs font-bold text-white ml-2">
+                  Segarkan Data
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <View className="space-y-4">
           {filteredList.map((item, index) => {
             const alreadyPlanted = isAlreadyPlanted(item.komoditas_id);
             const isJustPlanted = plantedSuccessId === item.komoditas_id;
@@ -339,6 +452,17 @@ export default function RekomendasiTab() {
                             <ChevronRight size={14} color="#FFFFFF" />
                           </TouchableOpacity>
                         </View>
+                      ) : !activeLahan ? (
+                        <TouchableOpacity
+                          onPress={() => setShowNoLahanModal(true)}
+                          activeOpacity={0.85}
+                          className="w-full flex-row items-center justify-center bg-amber-50 border border-amber-300 py-3.5 px-3 rounded-2xl"
+                        >
+                          <AlertCircle size={15} color="#D97706" />
+                          <Text className="text-xs font-bold text-amber-900 ml-1.5" numberOfLines={1}>
+                            Buat Lahan Dahulu
+                          </Text>
+                        </TouchableOpacity>
                       ) : (
                         <TouchableOpacity
                           onPress={() => handlePlant(item)}
@@ -359,6 +483,7 @@ export default function RekomendasiTab() {
             );
           })}
         </View>
+        )}
 
         {/* Modal Detail Komoditas & Panduan Tanam */}
         <Modal
@@ -457,15 +582,82 @@ export default function RekomendasiTab() {
 
               {/* Modal CTA */}
               {selectedDetailItem && (
-                <Button
-                  title="Tanam di Pekarangan Saya"
-                  onPress={() => handlePlant(selectedDetailItem)}
-                  loading={plantingId === selectedDetailItem.komoditas_id}
-                  size="lg"
-                  className="w-full shadow-md"
-                  icon={<Plus size={18} color="#FFFFFF" strokeWidth={2.5} />}
-                />
+                !activeLahan ? (
+                  <Button
+                    title="Buat Lahan Dahulu untuk Menanam"
+                    variant="outline"
+                    onPress={() => {
+                      setSelectedDetailItem(null);
+                      setShowNoLahanModal(true);
+                    }}
+                    size="lg"
+                    className="w-full border-amber-400 bg-amber-50"
+                    icon={<AlertCircle size={18} color="#D97706" />}
+                  />
+                ) : (
+                  <Button
+                    title="Tanam di Pekarangan Saya"
+                    onPress={() => handlePlant(selectedDetailItem)}
+                    loading={plantingId === selectedDetailItem.komoditas_id}
+                    size="lg"
+                    className="w-full shadow-md"
+                    icon={<Plus size={18} color="#FFFFFF" strokeWidth={2.5} />}
+                  />
+                )
               )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal Peringatan Belum Ada Lahan */}
+        <Modal
+          visible={showNoLahanModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowNoLahanModal(false)}
+        >
+          <View className="flex-1 bg-black/60 justify-center items-center px-6">
+            <View className="bg-white rounded-3xl p-6 w-full max-w-sm items-center border border-gray-100 shadow-xl">
+              <View className="w-16 h-16 rounded-2xl bg-amber-100 items-center justify-center mb-3.5 border border-amber-200">
+                <AlertCircle size={32} color="#D97706" />
+              </View>
+
+              <View className="bg-amber-100/90 px-3 py-1 rounded-full mb-2">
+                <Text className="text-[10px] font-black text-amber-900 uppercase tracking-wider">
+                  Lahan Belum Tersedia
+                </Text>
+              </View>
+
+              <Text className="text-lg font-black text-gray-900 text-center mb-1.5">
+                Belum Ada Lahan Pekarangan
+              </Text>
+
+              <Text className="text-xs text-gray-500 text-center leading-relaxed mb-6 px-1">
+                Anda perlu membuat atau menentukan ukuran lahan di tab Lahan terlebih dahulu agar AI dapat menghitung kebutuhan ruang dan jadwal perawatan tanaman Anda.
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setShowNoLahanModal(false);
+                  router.push('/(tabs)/lahan');
+                }}
+                activeOpacity={0.85}
+                className="w-full bg-[#1C7430] py-3.5 rounded-2xl items-center justify-center shadow-xs mb-2.5"
+              >
+                <Text className="text-xs font-black text-white">
+                  Buat Lahan Sekarang 🌱
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setShowNoLahanModal(false)}
+                activeOpacity={0.7}
+                className="py-2 px-4"
+              >
+                <Text className="text-xs font-semibold text-gray-500">
+                  Nanti Saja
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>

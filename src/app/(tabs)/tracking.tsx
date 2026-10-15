@@ -28,6 +28,7 @@ export default function TrackingTab() {
   const insets = useSafeAreaInsets();
   const {
     activeCrops,
+    activeLahan,
     toggleChecklistSiram,
     toggleChecklistPupuk,
     recordPanen,
@@ -180,14 +181,16 @@ export default function TrackingTab() {
               <Leaf size={32} color="#1C7430" />
             </View>
             <Text className="text-lg font-bold text-gray-900 text-center">
-              Belum Ada Tanaman Aktif
+              {!activeLahan ? 'Belum Ada Lahan Terdaftar' : 'Belum Ada Tanaman Aktif'}
             </Text>
             <Text className="text-xs text-gray-500 text-center mt-1 mb-5 leading-relaxed">
-              Pilih komoditas yang paling cocok dari rekomendasi kami untuk mulai menanam di pekarangan Anda.
+              {!activeLahan
+                ? 'Buat sketsa lahan pekarangan Anda terlebih dahulu agar dapat memilih dan menanam komoditas.'
+                : 'Pilih komoditas yang paling cocok dari rekomendasi kami untuk mulai menanam di pekarangan Anda.'}
             </Text>
             <Button
-              title="Lihat Rekomendasi Tanaman"
-              onPress={() => router.push('/(tabs)/rekomendasi')}
+              title={!activeLahan ? 'Buat Lahan Sekarang' : 'Lihat Rekomendasi Tanaman'}
+              onPress={() => router.push(!activeLahan ? '/(tabs)/lahan' : '/(tabs)/rekomendasi')}
               size="md"
             />
           </View>

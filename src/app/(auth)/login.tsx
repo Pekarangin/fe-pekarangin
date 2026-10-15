@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,11 +25,33 @@ WebBrowser.maybeCompleteAuthSession();
 export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { login, loginWithGoogle } = useApp();
+  const { login, loginWithGoogle, isAuthenticated } = useApp();
+  const scrollViewRef = useRef<ScrollView>(null);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setIsKeyboardVisible(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated, router]);
 
   const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
   const [, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
@@ -97,22 +120,26 @@ export default function LoginScreen() {
   };
 
   return (
-    <View
-      style={{
-        paddingTop: Math.max(insets.top, 20),
-        paddingBottom: Math.max(insets.bottom, 20),
-      }}
-      className="flex-1 bg-[#F8FAF8]"
-    >
+    <View className="flex-1 bg-[#F8FAF8]">
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         className="flex-1"
       >
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-          className="px-6 py-6"
+          ref={scrollViewRef}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingTop: Math.max(insets.top, 24),
+            paddingBottom: Math.max(insets.bottom, 24) + (isKeyboardVisible ? 240 : 40),
+          }}
+          keyboardShouldPersistTaps="handled"
+          className="px-6"
           showsVerticalScrollIndicator={false}
         >
+          {/* Elastic top spacer to center vertically when keyboard is hidden */}
+          {!isKeyboardVisible && <View className="flex-1" />}
+
           {/* Header Logo & Subtitle */}
           <View className="items-center mb-8">
             <Logo
@@ -165,6 +192,11 @@ export default function LoginScreen() {
               isPassword
               value={password}
               onChangeText={setPassword}
+              onFocus={() => {
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollToEnd({ animated: true });
+                }, 150);
+              }}
               leftIcon={<Lock size={18} color="#6B7280" />}
             />
 
@@ -203,6 +235,9 @@ export default function LoginScreen() {
               icon={<GoogleIcon size={20} />}
             />
           </View>
+
+          {/* Elastic bottom spacer to center vertically when keyboard is hidden */}
+          {!isKeyboardVisible && <View className="flex-1" />}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
