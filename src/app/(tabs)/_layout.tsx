@@ -1,11 +1,13 @@
 import React from 'react';
 import { Tabs, Redirect } from 'expo-router';
 import { Home, Sparkles, Bot, Leaf, User } from 'lucide-react-native';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
 import { FeatureTourCoachmark } from '../../components/dashboard/FeatureTourCoachmark';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
   const { isAuthenticated, isOnboarded, isTourActive, skipTour } = useApp();
 
   // Route Guard: If not onboarded -> go to onboarding
@@ -18,6 +20,8 @@ export default function TabLayout() {
     return <Redirect href="/(auth)/login" />;
   }
 
+  const bottomInset = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 12 : 8);
+
   return (
     <View style={{ flex: 1 }}>
       <Tabs
@@ -29,8 +33,8 @@ export default function TabLayout() {
             backgroundColor: '#FFFFFF',
             borderTopColor: '#F3F4F6',
             borderTopWidth: 1,
-            height: 65,
-            paddingBottom: 10,
+            height: 58 + bottomInset,
+            paddingBottom: bottomInset,
             paddingTop: 8,
           },
           tabBarLabelStyle: {

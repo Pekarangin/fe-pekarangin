@@ -35,7 +35,16 @@ export async function request<T>(
     Accept: 'application/json',
   };
 
-  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const isFormData =
+    (typeof FormData !== 'undefined' && options.body instanceof FormData) ||
+    Boolean(
+      options.body &&
+        typeof options.body === 'object' &&
+        (typeof (options.body as any).getParts === 'function' ||
+          (options.body as any)?._parts !== undefined ||
+          (options.body as any).constructor?.name === 'FormData')
+    );
+
   if (!isFormData) {
     headers['Content-Type'] = 'application/json';
   }
@@ -48,6 +57,12 @@ export async function request<T>(
         headers[key] = value;
       });
     }
+  }
+
+  // JANGAN set Content-Type untuk FormData agar fetch otomatis inject boundary multipart
+  if (isFormData) {
+    delete headers['Content-Type'];
+    delete headers['content-type'];
   }
 
   if (token && !headers['Authorization']) {

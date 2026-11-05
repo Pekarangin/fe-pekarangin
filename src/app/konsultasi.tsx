@@ -26,6 +26,7 @@ import {
 } from 'lucide-react-native';
 import { useApp } from '../context/AppContext';
 import { chatStorage } from '../services/api/storage';
+import { MarkdownText } from '../components/ui/MarkdownText';
 
 interface ChatMessage {
   id: string;
@@ -70,6 +71,19 @@ export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     return chatStorage.get(user?.user_id);
   });
+
+  // Restore stored chat history asynchronously on mount / user change
+  useEffect(() => {
+    let isMounted = true;
+    chatStorage.loadAsync(user?.user_id).then(stored => {
+      if (isMounted && Array.isArray(stored) && stored.length > 0) {
+        setMessages(stored);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.user_id]);
 
   // Dynamically computed welcome message with the current user's name
   const allMessages: ChatMessage[] = [
@@ -149,22 +163,31 @@ export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } 
     }
   };
 
+  const executeReset = async () => {
+    await chatStorage.clear(user?.user_id);
+    setMessages([]);
+  };
+
   const handleResetChat = () => {
-    Alert.alert(
-      'Hapus Riwayat Chat',
-      'Apakah Anda ingin mereset dan menghapus riwayat percakapan?',
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: () => {
-            chatStorage.clear(user?.user_id);
-            setMessages([]);
+    if (Platform.OS === 'web') {
+      const ok = typeof window !== 'undefined' ? window.confirm('Apakah Anda yakin ingin mereset dan menghapus riwayat percakapan?') : true;
+      if (ok) {
+        executeReset();
+      }
+    } else {
+      Alert.alert(
+        'Hapus Riwayat Chat',
+        'Apakah Anda ingin mereset dan menghapus riwayat percakapan?',
+        [
+          { text: 'Batal', style: 'cancel' },
+          {
+            text: 'Reset',
+            style: 'destructive',
+            onPress: executeReset,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   return (
@@ -199,7 +222,7 @@ export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } 
               <View className="flex-row items-center ml-2 pl-2 border-l border-gray-200">
                 <Clock size={10} color="#6B7280" />
                 <Text className="text-[10px] font-medium text-gray-400 ml-1">
-                  Riwayat 24 Jam
+                  Riwayat Tersimpan
                 </Text>
               </View>
             </View>
@@ -209,9 +232,12 @@ export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } 
         <TouchableOpacity
           onPress={handleResetChat}
           activeOpacity={0.7}
-          className="p-2 rounded-xl bg-gray-50 border border-gray-200"
+          accessibilityLabel="Reset riwayat chat"
+          className="flex-row items-center px-3 py-1.5 rounded-xl bg-red-50 border border-red-200 shadow-xs"
+          style={Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : undefined}
         >
-          <RotateCcw size={16} color="#4B5563" />
+          <RotateCcw size={14} color="#DC2626" />
+          <Text className="text-xs font-bold text-red-600 ml-1.5">Reset</Text>
         </TouchableOpacity>
       </View>
 
@@ -308,13 +334,7 @@ export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } 
                     </Text>
                   </View>
                 )}
-                <Text
-                  className={`text-sm leading-relaxed ${
-                    isUser ? 'text-white font-medium' : 'text-gray-800'
-                  }`}
-                >
-                  {msg.text}
-                </Text>
+                <MarkdownText content={msg.text} isUser={isUser} />
                 <Text
                   className={`text-[10px] mt-1.5 self-end ${
                     isUser ? 'text-green-200 font-medium' : 'text-gray-400'

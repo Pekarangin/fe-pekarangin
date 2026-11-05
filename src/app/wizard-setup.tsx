@@ -50,14 +50,16 @@ const CELL_AREA_M2 = 0.25;
 export default function WizardSetupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { createLahan, addTanamanAktif, rekomendasiList, refreshRekomendasi } = useApp();
+  const { lahans, createLahan, addTanamanAktif, rekomendasiList, refreshRekomendasi } = useApp();
 
   // Wizard Stage: 1 = Setup Lahan, 2 = Pilih Tanaman Pertama
   const [step, setStep] = useState<1 | 2>(1);
 
   // --- Step 1: Lahan State ---
   const [inputMode, setInputMode] = useState<'grid' | 'manual'>('grid');
-  const [namaLahan, setNamaLahan] = useState('Pekarangan Rumah');
+  const [namaLahan, setNamaLahan] = useState(
+    lahans.length > 0 ? `Pekarangan ${lahans.length + 1}` : 'Pekarangan Rumah'
+  );
   // Default 4x4 square preset in center = 16 cells (4.0 m²)
   const [selectedCells, setSelectedCells] = useState<number[]>([
     18, 19, 20, 21,
@@ -206,13 +208,26 @@ export default function WizardSetupScreen() {
 
   // Step 1 Submit: Save Lahan and Proceed to Step 2
   const handleSaveLahanAndNext = async () => {
-    const finalLuas = calculatedLuas > 0 ? calculatedLuas : 1.0;
+    let finalLuas = calculatedLuas > 0 ? calculatedLuas : 1.0;
+    let cellsToSend = selectedCells;
+
+    if (inputMode === 'manual') {
+      const requiredCellCount = Math.max(1, Math.min(TOTAL_CELLS, Math.round(finalLuas / CELL_AREA_M2)));
+      cellsToSend = Array.from({ length: requiredCellCount }, (_, i) => i);
+      finalLuas = Number((requiredCellCount * CELL_AREA_M2).toFixed(2));
+    } else {
+      if (cellsToSend.length === 0) {
+        cellsToSend = [18, 19, 26, 27]; // fallback default sel
+      }
+      finalLuas = Number((cellsToSend.length * CELL_AREA_M2).toFixed(2));
+    }
+
     setSavingLahan(true);
     try {
       await createLahan({
-        nama_lahan: namaLahan.trim() || 'Pekarangan Saya',
+        nama_lahan: namaLahan.trim() || (lahans.length > 0 ? `Pekarangan ${lahans.length + 1}` : 'Pekarangan Saya'),
         luas_m2: finalLuas,
-        grid_snapshot: selectedCells,
+        grid_snapshot: cellsToSend,
         paparan_sinar: paparanSinar,
         sumber_paparan: sumberPaparan,
       });
@@ -292,7 +307,7 @@ export default function WizardSetupScreen() {
             <View className="flex-row items-center mb-3">
               <Trees size={20} color="#1C7430" />
               <Text className="text-sm font-bold text-[#1C7430] ml-2">
-                Setup Pekarangan Pertama
+                {lahans.length > 0 ? 'Tambah Pekarangan Baru' : 'Setup Pekarangan Pertama'}
               </Text>
             </View>
 
@@ -847,7 +862,12 @@ export default function WizardSetupScreen() {
                 <View style={{ gap: 6 }} className="flex-row items-center mb-1">
                   <CheckCircle2 size={15} color="#166534" />
                   <Text className="text-xs font-black text-emerald-900">
-                    Hasil: {aiDetectedSun === 'FULL_SUN' ? 'Sinar Penuh (>6 Jam)' : 'Sinar Sebagian (3-6 Jam)'}
+                    Hasil:{' '}
+                    {aiDetectedSun === 'FULL_SUN'
+                      ? 'Sinar Penuh (>6 Jam)'
+                      : aiDetectedSun === 'PARTIAL_SUN'
+                      ? 'Sinar Sebagian (3-6 Jam)'
+                      : 'Teduh / Naungan (<3 Jam)'}
                   </Text>
                 </View>
                 <Text className="text-[11px] text-emerald-800 leading-snug">

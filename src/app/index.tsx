@@ -51,10 +51,10 @@ export default function SplashScreen() {
       <View />
 
       {/* Center Logo */}
-      <View className="items-center justify-center">
+      <View className="items-center justify-center w-full max-w-sm">
         <Logo size="xl" showText={true} />
-        <View className="mt-8">
-          <ActivityIndicator size="small" color="#1C7430" />
+        <View className="mt-6">
+          <ActivityIndicator size="small" color="#166534" />
         </View>
       </View>
 
