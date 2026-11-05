@@ -52,15 +52,25 @@ export const lahanService = {
   analyzeLight: async (imageUri: string, mimeType: string = 'image/jpeg'): Promise<AnalisisCahayaResult> => {
     const formData = new FormData();
 
+    let cleanMime = mimeType;
+    if (!cleanMime || cleanMime === 'image' || cleanMime === 'application/octet-stream') {
+      const lower = imageUri.toLowerCase();
+      if (lower.endsWith('.png')) cleanMime = 'image/png';
+      else if (lower.endsWith('.webp')) cleanMime = 'image/webp';
+      else cleanMime = 'image/jpeg';
+    }
+
     if (Platform.OS === 'web' || imageUri.startsWith('blob:') || imageUri.startsWith('data:')) {
       const blobRes = await fetch(imageUri);
       const blob = await blobRes.blob();
       formData.append('foto', blob, 'photo.jpg');
     } else {
+      const filename = imageUri.split('/').pop() || 'photo.jpg';
+      const cleanFilename = filename.includes('.') ? filename : `${filename}.jpg`;
       formData.append('foto', {
         uri: imageUri,
-        name: 'photo.jpg',
-        type: mimeType || 'image/jpeg',
+        name: cleanFilename,
+        type: cleanMime,
       } as any);
     }
 

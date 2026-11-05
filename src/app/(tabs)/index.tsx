@@ -72,7 +72,9 @@ export default function DashboardHomeScreen() {
     }
   };
 
-  const activeOnlyCrops = activeCrops.filter(c => c.status === 'AKTIF');
+  const activeOnlyCrops = activeCrops.filter(
+    c => c.status === 'AKTIF' && (!activeLahan || c.lahan_id === activeLahan.lahan_id)
+  );
   const isSiramDone =
     activeOnlyCrops.length > 0 &&
     activeOnlyCrops.every(c => c.checklist_hari_ini?.siram_done);

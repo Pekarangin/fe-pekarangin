@@ -37,6 +37,10 @@ import { PaparanSinar } from '../../types';
 export default function ProfileTab() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  const formatRupiah = (num: number) => {
+    return 'Rp ' + (num || 0).toLocaleString('id-ID');
+  };
   const {
     user,
     stats,
@@ -175,8 +179,12 @@ export default function ProfileTab() {
             <Text className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
               Total Hemat
             </Text>
-            <Text className="text-base font-black text-gray-900 mt-0.5">
-              {(stats.total_hemat_rp / 1000).toFixed(0)}k
+            <Text
+              className="text-sm font-black text-gray-900 mt-0.5"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {formatRupiah(stats.total_hemat_rp)}
             </Text>
           </View>
 

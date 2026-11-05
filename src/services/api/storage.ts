@@ -137,23 +137,53 @@ export interface StoredChatSession {
 }
 
 const memoryChatSessions: Record<string, StoredChatSession> = {};
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 hari
 
 export const chatStorage = {
   get: (userId?: string): ChatMessageItem[] => {
     const key = `pekarangin_chat_${userId || 'default'}`;
     const now = Date.now();
     const mem = memoryChatSessions[key];
-    if (mem) {
-      if (now - mem.savedAt < ONE_DAY_MS) {
-        return mem.messages;
-      } else {
-        delete memoryChatSessions[key];
-        AsyncStorage.removeItem(key).catch(console.warn);
-      }
+    if (mem && now - mem.savedAt < RETENTION_MS) {
+      return mem.messages;
+    }
+    // Web synchronous fallback via localStorage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (raw) {
+          const parsed: StoredChatSession = JSON.parse(raw);
+          if (now - parsed.savedAt < RETENTION_MS && Array.isArray(parsed.messages)) {
+            memoryChatSessions[key] = parsed;
+            return parsed.messages;
+          }
+        }
+      } catch (e) {}
     }
     return [];
   },
+
+  loadAsync: async (userId?: string): Promise<ChatMessageItem[]> => {
+    const key = `pekarangin_chat_${userId || 'default'}`;
+    const now = Date.now();
+    try {
+      const raw = await AsyncStorage.getItem(key);
+      if (raw) {
+        const parsed: StoredChatSession = JSON.parse(raw);
+        if (now - parsed.savedAt < RETENTION_MS && Array.isArray(parsed.messages)) {
+          memoryChatSessions[key] = parsed;
+          return parsed.messages;
+        } else {
+          await AsyncStorage.removeItem(key);
+          delete memoryChatSessions[key];
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal memuat riwayat chat:', e);
+    }
+    return memoryChatSessions[key]?.messages || [];
+  },
+
   set: (messages: ChatMessageItem[], userId?: string): void => {
     const key = `pekarangin_chat_${userId || 'default'}`;
     const session: StoredChatSession = {
@@ -162,10 +192,25 @@ export const chatStorage = {
     };
     memoryChatSessions[key] = session;
     AsyncStorage.setItem(key, JSON.stringify(session)).catch(console.warn);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(key, JSON.stringify(session));
+      } catch (e) {}
+    }
   },
-  clear: (userId?: string): void => {
+
+  clear: async (userId?: string): Promise<void> => {
     const key = `pekarangin_chat_${userId || 'default'}`;
     delete memoryChatSessions[key];
-    AsyncStorage.removeItem(key).catch(console.warn);
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch (e) {
+      console.warn('Gagal menghapus storage chat:', e);
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.removeItem(key);
+      } catch (e) {}
+    }
   },
 };

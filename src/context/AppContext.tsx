@@ -9,6 +9,7 @@ import {
 } from '../services/notifications';
 import {
   authService,
+  AuthUserData,
   lahanService,
   trackingService,
   rekomendasiService,
@@ -30,7 +31,7 @@ interface AppContextType {
   setIsOnboarded: (val: boolean) => void;
   isAuthLoading: boolean;
   login: (email: string, password?: string, nama?: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<AuthUserData>;
   logout: () => void;
   register: (nama: string, email: string, password?: string, wilayah?: string) => Promise<void>;
   fetchRemoteUserData: () => Promise<void>;
@@ -152,7 +153,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           loadedLahans[0] = first;
         }
         setLahans(loadedLahans);
-        setActiveLahan(loadedLahans.length > 0 ? loadedLahans[0] : null);
+        setActiveLahan(prev => {
+          if (prev && loadedLahans.some(l => l.lahan_id === prev.lahan_id)) {
+            return loadedLahans.find(l => l.lahan_id === prev.lahan_id) || prev;
+          }
+          return loadedLahans.length > 0 ? loadedLahans[0] : null;
+        });
       } else {
         setLahans([]);
         setActiveLahan(null);
@@ -257,14 +263,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [fetchRemoteUserData]);
 
+const SUNLIGHT_MATRIX: Record<string, Record<string, number>> = {
+  FULL_SUN:    { FULL_SUN: 1.0, PARTIAL_SUN: 0.6, SHADE: 0.2 },
+  PARTIAL_SUN: { FULL_SUN: 0.8, PARTIAL_SUN: 1.0, SHADE: 0.6 },
+  SHADE:       { FULL_SUN: 0.2, PARTIAL_SUN: 0.6, SHADE: 1.0 },
+};
+
+function getCropCategory(name: string): 'DAUN' | 'BUMBU' | 'BUAH' {
+  const lower = name.toLowerCase();
+  if (lower.includes('bawang') && !lower.includes('daun bawang')) return 'BUMBU';
+  if (lower.includes('cabai') || lower.includes('cabe')) return 'BUMBU';
+  if (
+    lower.includes('bayam') ||
+    lower.includes('kangkung') ||
+    lower.includes('selada') ||
+    lower.includes('sawi') ||
+    lower.includes('kemangi') ||
+    lower.includes('daun bawang')
+  ) {
+    return 'DAUN';
+  }
+  return 'BUAH';
+}
+
+function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
+  if (!items || items.length <= 3) return items;
+
+  const suitabilityWeight = (suitability: string) => {
+    if (suitability === 'COCOK') return 3;
+    if (suitability === 'KURANG_COCOK') return 2;
+    return 1;
+  };
+
+  const sorted = [...items].sort((a, b) => {
+    const diffSuit = suitabilityWeight(b.kesesuaian_sinar) - suitabilityWeight(a.kesesuaian_sinar);
+    if (diffSuit !== 0) return diffSuit;
+    return b.skor_prioritas - a.skor_prioritas;
+  });
+
+  const result: RekomendasiItem[] = [];
+  const used = new Set<string>();
+  const categories: Array<'DAUN' | 'BUMBU' | 'BUAH'> = ['DAUN', 'BUMBU', 'BUAH'];
+
+  // Ambil tanaman terbaik dari tiap kategori (daun, bumbu, buah)
+  for (const cat of categories) {
+    const pick = sorted.find(
+      item => getCropCategory(item.nama) === cat && !used.has(item.komoditas_id) && item.kesesuaian_sinar !== 'TIDAK_COCOK'
+    );
+    if (pick) {
+      result.push(pick);
+      used.add(pick.komoditas_id);
+    }
+  }
+
+  // Masukkan sisa tanaman terurut sesuai kesesuaian dan skor
+  for (const item of sorted) {
+    if (!used.has(item.komoditas_id)) {
+      result.push(item);
+      used.add(item.komoditas_id);
+    }
+  }
+  return result;
+}
+
   const fetchRekomendasiData = useCallback(async (): Promise<RekomendasiItem[] | null> => {
     if (activeLahan?.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
       const res = await rekomendasiService.getByLahanId(activeLahan.lahan_id);
       if (res?.rekomendasi && res.rekomendasi.length > 0) {
-        return res.rekomendasi.map(item => ({
+        const mapped = res.rekomendasi.map(item => ({
           ...item,
           image_url: item.image_url || getCropImage(item.nama),
         }));
+        return diversifyRecommendations(mapped);
       }
       return null;
     }
@@ -274,22 +344,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         data.map(k => rekomendasiService.getKomoditasById(k.komoditas_id || (k as any).id))
       );
 
-      return data.map((k: any, idx: number) => {
+      const computedList: RekomendasiItem[] = data.map((k: any, idx: number) => {
         const detailSettled = detailedList[idx];
         const detail = detailSettled.status === 'fulfilled' ? detailSettled.value : null;
         const hargaPasar = detail?.harga_terkini?.harga_rp_per_kg || 25000;
         const konsumsiRt = Number(k.konsumsi_rt_kg_per_bulan || k.konsumsiRtKgPerBulan || 1);
         const estimasiHemat = Math.round(konsumsiRt * hargaPasar);
 
+        const kebutuhanSinar = k.kebutuhan_sinar || k.kebutuhanSinar || 'FULL_SUN';
+        const paparanLahan = activeLahan?.paparan_sinar || 'FULL_SUN';
+        const sunlightFactor = SUNLIGHT_MATRIX[kebutuhanSinar]?.[paparanLahan] ?? 0.8;
+        const kesesuaianSinar: KesesuaianSinar =
+          sunlightFactor >= 1.0 ? 'COCOK' : sunlightFactor >= 0.6 ? 'KURANG_COCOK' : 'TIDAK_COCOK';
+
+        const luasMin = Number(k.luas_min_m2 || k.luasMinM2 || 0.25);
+        const waktuPanen = k.waktu_panen_hari || k.waktuPanenHari || 45;
+        const rawScore = (estimasiHemat / (luasMin || 0.25) / (waktuPanen || 45)) * sunlightFactor;
+        const skorPrioritas = Number(Math.min(5.0, Math.max(3.2, (rawScore / 650) + 2.6)).toFixed(1));
+
         return {
           komoditas_id: k.komoditas_id || k.id,
           nama: k.nama,
-          skor_prioritas: Number(Math.max(3.5, 5 - idx * 0.1).toFixed(1)),
+          skor_prioritas: skorPrioritas,
           estimasi_hemat_rp_per_bulan: estimasiHemat,
-          waktu_panen_hari: k.waktu_panen_hari || k.waktuPanenHari || 45,
-          luas_dibutuhkan_m2: Number(k.luas_min_m2 || k.luasMinM2 || 0.25),
+          waktu_panen_hari: waktuPanen,
+          luas_dibutuhkan_m2: luasMin,
           tingkat_kesulitan: (k.tingkat_kesulitan || k.tingkatKesulitan || 'MUDAH') as TingkatKesulitan,
-          kesesuaian_sinar: 'COCOK' as KesesuaianSinar,
+          kesesuaian_sinar: kesesuaianSinar,
           harga_pasar_per_kg: hargaPasar,
           konsumsi_rt_kg_per_bulan: konsumsiRt,
           image_url: k.image_url || detail?.image_url || '',
@@ -299,6 +380,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           media_tanam: 'Pot / Polybag / Bedengan',
         };
       });
+
+      return diversifyRecommendations(computedList);
     }
     return null;
   }, [activeLahan]);
@@ -465,7 +548,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const loginWithGoogle = async (idToken: string) => {
+  const loginWithGoogle = async (idToken: string): Promise<AuthUserData> => {
     if (!idToken) {
       throw new Error('Google ID Token tidak ditemukan.');
     }
@@ -491,6 +574,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveCrops([]);
     setStats(EMPTY_STATS);
     await fetchRemoteUserData();
+    return data;
   };
 
   const register = async (nama: string, email: string, password?: string, wilayah?: string) => {
@@ -636,6 +720,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return updatedLahan;
   };
+
+  const selectActiveLahan = useCallback((lahan: Lahan | null) => {
+    setActiveLahan(lahan);
+    if (lahan) {
+      if (lahan.luas_m2) {
+        setStats(prev => ({
+          ...prev,
+          rth_aktif_m2: Number(lahan.luas_m2.toFixed(2)),
+        }));
+      }
+      if (lahan.lahan_id && !lahan.lahan_id.startsWith('lah-')) {
+        rekomendasiService
+          .getByLahanId(lahan.lahan_id)
+          .then(res => {
+            if (res?.rekomendasi && res.rekomendasi.length > 0) {
+              const mapped = res.rekomendasi.map(item => ({
+                ...item,
+                image_url: item.image_url || getCropImage(item.nama),
+              }));
+              setRekomendasiList(mapped);
+            }
+          })
+          .catch(err => console.warn('Gagal ambil rekomendasi lahan aktif:', err));
+      }
+    }
+  }, []);
 
   const deleteLahan = async (id: string): Promise<void> => {
     try {
@@ -974,7 +1084,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchRemoteUserData,
         lahans,
         activeLahan,
-        setActiveLahan,
+        setActiveLahan: selectActiveLahan,
         saveLahan,
         createLahan,
         updateLahan,

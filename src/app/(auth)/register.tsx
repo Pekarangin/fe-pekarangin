@@ -81,26 +81,43 @@ export default function RegisterScreen() {
     };
   }, []);
 
-  const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-  const [, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
-    clientId: googleClientId || 'unconfigured-client-id.apps.googleusercontent.com',
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || googleClientId,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  const webClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
+    clientId: webClientId,
+    webClientId,
+    iosClientId,
+    androidClientId,
   });
 
   useEffect(() => {
-    if (googleResponse?.type === 'success' && googleResponse.params?.id_token) {
-      const idToken = googleResponse.params.id_token;
-      loginWithGoogle(idToken)
-        .then(() => {
-          router.replace('/wizard-setup' as any);
-        })
-        .catch((err: any) => {
-          const msg = err?.message || 'Registrasi dengan akun Google gagal di server.';
-          setErrorMsg(msg);
-          Alert.alert('Gagal Google', msg);
-        });
+    if (googleResponse?.type === 'success') {
+      const idToken =
+        googleResponse.params?.id_token ||
+        (googleResponse as any).authentication?.idToken;
+
+      if (idToken) {
+        setLoading(true);
+        loginWithGoogle(idToken)
+          .then((res) => {
+            if (res?.is_new_user) {
+              router.replace('/wizard-setup' as any);
+            } else {
+              router.replace('/(tabs)');
+            }
+          })
+          .catch((err: any) => {
+            const msg = err?.message || 'Registrasi dengan akun Google gagal di server.';
+            setErrorMsg(msg);
+            Alert.alert('Gagal Google', msg);
+          })
+          .finally(() => {
+            setLoading(false);
+          });
+      }
     } else if (googleResponse?.type === 'error') {
       const msg = googleResponse.error?.message || 'Otorisasi Google dibatalkan.';
       Alert.alert('Google Sign-In Error', msg);
@@ -360,10 +377,10 @@ export default function RegisterScreen() {
 
   const handleGoogleRegister = async () => {
     setErrorMsg('');
-    if (!googleClientId) {
+    if (!webClientId && !iosClientId && !androidClientId) {
       Alert.alert(
         'Google Client ID Belum Dikonfigurasi',
-        'Fitur daftar dengan Google memerlukan Google OAuth Client ID resmi dari Google Cloud Console.\n\nHarap daftarkan EXPO_PUBLIC_GOOGLE_CLIENT_ID di file .env dan cocokkan dengan GOOGLE_CLIENT_ID di backend server agar token dapat diverifikasi.',
+        'Fitur daftar dengan Google memerlukan Google OAuth Client ID resmi dari Google Cloud Console.\n\nHarap daftarkan EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID / EXPO_PUBLIC_GOOGLE_CLIENT_ID di file .env dan cocokkan dengan GOOGLE_CLIENT_ID di backend server agar token dapat diverifikasi.',
         [{ text: 'Tutup' }]
       );
       return;
@@ -400,16 +417,17 @@ export default function RegisterScreen() {
           {/* Elastic top spacer to center vertically when keyboard is hidden */}
           {!isKeyboardVisible && <View className="flex-1" />}
 
-          {/* Header Logo & Subtitle */}
-          <View className="items-center mb-6">
-            <Logo
-              size="md"
-              subText="Mari mulai menanam bersama komunitas"
-            />
-          </View>
+          <View className="w-full max-w-md mx-auto">
+            {/* Header Logo & Subtitle */}
+            <View className="items-center mb-6">
+              <Logo
+                size="md"
+                subText="Mari mulai menanam bersama komunitas"
+              />
+            </View>
 
-          {/* Form Card */}
-          <View className="bg-white rounded-3xl p-6 shadow-sm shadow-black/5 border border-gray-100">
+            {/* Form Card */}
+            <View className="bg-white rounded-3xl p-6 shadow-sm shadow-black/5 border border-gray-100">
             {/* Segmented Switch: Masuk / Daftar */}
             <View className="flex-row bg-[#F3F4F6] p-1.5 rounded-2xl mb-6">
               <TouchableOpacity
@@ -566,6 +584,7 @@ export default function RegisterScreen() {
               icon={<GoogleIcon size={20} />}
             />
           </View>
+        </View>
 
           {/* Elastic bottom spacer to center vertically when keyboard is hidden */}
           {!isKeyboardVisible && <View className="flex-1" />}

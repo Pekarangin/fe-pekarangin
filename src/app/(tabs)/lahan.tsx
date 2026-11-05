@@ -29,6 +29,9 @@ import {
   X,
   Upload,
   CheckCircle2,
+  Plus,
+  ChevronDown,
+  Circle,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { PaparanSinar, SumberPaparan } from '../../types';
@@ -44,7 +47,10 @@ const CELL_AREA_M2 = 0.25;
 export default function LahanTab() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { activeLahan, saveLahan } = useApp();
+  const { lahans, activeLahan, setActiveLahan, createLahan, updateLahan, saveLahan } = useApp();
+
+  const [isCreatingNew, setIsCreatingNew] = useState<boolean>(false);
+  const [isSwitcherOpen, setIsSwitcherOpen] = useState<boolean>(false);
 
   const [inputMode, setInputMode] = useState<'grid' | 'manual'>('grid');
   const [namaLahan, setNamaLahan] = useState(activeLahan?.nama_lahan || 'Pekarangan Rumah');
@@ -60,10 +66,10 @@ export default function LahanTab() {
   );
   const [activePreset, setActivePreset] = useState<'square' | 'rect' | 'lshape' | 'all' | null>('square');
 
-  const currentLahanKey = `${activeLahan?.lahan_id || ''}-${(activeLahan?.grid_snapshot || []).join(',')}`;
+  const currentLahanKey = `${isCreatingNew ? 'new' : activeLahan?.lahan_id || ''}-${(activeLahan?.grid_snapshot || []).join(',')}`;
   const [prevLahanKey, setPrevLahanKey] = useState<string>(currentLahanKey);
 
-  if (activeLahan && prevLahanKey !== currentLahanKey) {
+  if (!isCreatingNew && activeLahan && prevLahanKey !== currentLahanKey) {
     setPrevLahanKey(currentLahanKey);
     setNamaLahan(activeLahan.nama_lahan || 'Pekarangan Rumah');
     setSelectedCells(activeLahan.grid_snapshot || []);
@@ -72,6 +78,35 @@ export default function LahanTab() {
     setSumberPaparan(activeLahan.sumber_paparan || 'MANUAL');
     setActivePreset(null);
   }
+
+  const handleStartCreateNew = () => {
+    setIsCreatingNew(true);
+    setNamaLahan(`Pekarangan ${lahans.length + 1}`);
+    // Preset persegi 4x4 (16 cells = 4.0 m2)
+    setSelectedCells([
+      18, 19, 20, 21,
+      26, 27, 28, 29,
+      34, 35, 36, 37,
+      42, 43, 44, 45,
+    ]);
+    setManualLuas('4.0');
+    setPaparanSinar('FULL_SUN');
+    setSumberPaparan('MANUAL');
+    setActivePreset('square');
+    setIsSwitcherOpen(false);
+  };
+
+  const handleSelectExistingLahan = (lahan: any) => {
+    setIsCreatingNew(false);
+    setActiveLahan(lahan);
+    setNamaLahan(lahan.nama_lahan || 'Pekarangan Rumah');
+    setSelectedCells(lahan.grid_snapshot || []);
+    setManualLuas(lahan.luas_m2 ? lahan.luas_m2.toString() : '0');
+    setPaparanSinar(lahan.paparan_sinar || 'FULL_SUN');
+    setSumberPaparan(lahan.sumber_paparan || 'MANUAL');
+    setActivePreset(null);
+    setIsSwitcherOpen(false);
+  };
 
   // AI Modal State
   const [aiModalVisible, setAiModalVisible] = useState<boolean>(false);
@@ -221,18 +256,52 @@ export default function LahanTab() {
   };
 
   const handleSaveAndRecommend = async () => {
+    let finalLuas = calculatedLuas > 0 ? calculatedLuas : 1.0;
+    let cellsToSend = selectedCells;
+
+    if (inputMode === 'manual') {
+      const requiredCellCount = Math.max(1, Math.min(TOTAL_CELLS, Math.round(finalLuas / CELL_AREA_M2)));
+      cellsToSend = Array.from({ length: requiredCellCount }, (_, i) => i);
+      finalLuas = Number((requiredCellCount * CELL_AREA_M2).toFixed(2));
+    } else {
+      if (cellsToSend.length === 0) {
+        cellsToSend = [18, 19, 26, 27];
+      }
+      finalLuas = Number((cellsToSend.length * CELL_AREA_M2).toFixed(2));
+    }
+
     setSaving(true);
     try {
-      await saveLahan({
-        nama_lahan: namaLahan || 'Pekarangan Saya',
-        luas_m2: calculatedLuas > 0 ? calculatedLuas : 1.0,
-        grid_snapshot: selectedCells,
-        paparan_sinar: paparanSinar,
-        sumber_paparan: sumberPaparan,
-      });
+      if (isCreatingNew) {
+        await createLahan({
+          nama_lahan: namaLahan.trim() || `Pekarangan ${lahans.length + 1}`,
+          luas_m2: finalLuas,
+          grid_snapshot: cellsToSend,
+          paparan_sinar: paparanSinar,
+          sumber_paparan: sumberPaparan,
+        });
+        setIsCreatingNew(false);
+      } else if (activeLahan && activeLahan.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
+        await updateLahan(activeLahan.lahan_id, {
+          nama_lahan: namaLahan.trim() || 'Pekarangan Saya',
+          luas_m2: finalLuas,
+          grid_snapshot: cellsToSend,
+          paparan_sinar: paparanSinar,
+          sumber_paparan: sumberPaparan,
+        });
+      } else {
+        await saveLahan({
+          nama_lahan: namaLahan.trim() || 'Pekarangan Saya',
+          luas_m2: finalLuas,
+          grid_snapshot: cellsToSend,
+          paparan_sinar: paparanSinar,
+          sumber_paparan: sumberPaparan,
+        });
+      }
       router.push('/(tabs)/rekomendasi');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      Alert.alert('Gagal Menyimpan Pekarangan', e?.message || 'Terjadi kesalahan saat menyimpan pekarangan.');
     } finally {
       setSaving(false);
     }
@@ -267,14 +336,74 @@ export default function LahanTab() {
           </Text>
         </View>
 
-        <View className="mb-6">
-          <Text className="text-2xl font-black text-gray-900 tracking-tight">
-            Kalkulator Tanaman
-          </Text>
-          <Text className="text-sm font-medium text-gray-500 mt-1">
-            Rencanakan kebun Anda untuk hasil panen optimal.
-          </Text>
+        <View className="mb-4 flex-row items-center justify-between">
+          <View className="flex-1 mr-2">
+            <Text className="text-2xl font-black text-gray-900 tracking-tight">
+              {isCreatingNew ? 'Tambah Pekarangan' : 'Kalkulator Tanaman'}
+            </Text>
+            <Text className="text-xs font-medium text-gray-500 mt-0.5">
+              {isCreatingNew
+                ? 'Buat profil pekarangan baru Anda.'
+                : 'Rencanakan kebun Anda untuk hasil panen optimal.'}
+            </Text>
+          </View>
+
+          {/* Pekarangan Selector / Add Button */}
+          <View className="flex-row items-center gap-1.5">
+            {lahans.length > 0 && !isCreatingNew && (
+              <TouchableOpacity
+                onPress={() => setIsSwitcherOpen(true)}
+                activeOpacity={0.8}
+                className="flex-row items-center bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-2xl"
+              >
+                <Text className="text-xs font-black text-emerald-900 mr-1 max-w-[100px]" numberOfLines={1}>
+                  {activeLahan?.nama_lahan || 'Pekarangan'}
+                </Text>
+                <ChevronDown size={14} color="#166534" />
+              </TouchableOpacity>
+            )}
+
+            {!isCreatingNew ? (
+              <TouchableOpacity
+                onPress={handleStartCreateNew}
+                activeOpacity={0.8}
+                className="flex-row items-center bg-[#124E2A] px-3 py-1.5 rounded-2xl shadow-xs"
+              >
+                <Plus size={14} color="#FFFFFF" strokeWidth={2.5} />
+                <Text className="text-xs font-bold text-white ml-1">
+                  Baru
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  if (activeLahan) {
+                    handleSelectExistingLahan(activeLahan);
+                  } else {
+                    setIsCreatingNew(false);
+                  }
+                }}
+                activeOpacity={0.8}
+                className="flex-row items-center bg-gray-100 border border-gray-300 px-3 py-1.5 rounded-2xl"
+              >
+                <Text className="text-xs font-bold text-gray-700">
+                  Batal
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
+
+        {isCreatingNew && (
+          <View className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 flex-row items-center justify-between">
+            <View className="flex-row items-center flex-1 mr-2">
+              <Trees size={16} color="#B45309" />
+              <Text className="text-xs font-bold text-amber-900 ml-2">
+                Menambahkan pekarangan baru ke akun Anda
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Card 1: Luas Lahan & Grid */}
         <View className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm shadow-black/5 mb-5">
@@ -696,7 +825,12 @@ export default function LahanTab() {
                   <View style={{ gap: 6 }} className="flex-row items-center mb-1">
                     <CheckCircle2 size={15} color="#166534" />
                     <Text className="text-xs font-black text-emerald-900">
-                      Hasil: {aiDetectedSun === 'FULL_SUN' ? 'Sinar Penuh (>6 Jam)' : 'Sinar Sebagian (3-6 Jam)'}
+                      Hasil:{' '}
+                      {aiDetectedSun === 'FULL_SUN'
+                        ? 'Sinar Penuh (>6 Jam)'
+                        : aiDetectedSun === 'PARTIAL_SUN'
+                        ? 'Sinar Sebagian (3-6 Jam)'
+                        : 'Teduh / Naungan (<3 Jam)'}
                     </Text>
                   </View>
                   <Text className="text-[11px] text-emerald-800 leading-snug">
@@ -735,6 +869,102 @@ export default function LahanTab() {
                   </TouchableOpacity>
                 )}
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal Switcher Pekarangan */}
+        <Modal
+          visible={isSwitcherOpen}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsSwitcherOpen(false)}
+        >
+          <View className="flex-1 bg-black/65 justify-end">
+            <View
+              style={{
+                maxHeight: '80%',
+                paddingBottom: Math.max(insets.bottom, 20),
+              }}
+              className="bg-white rounded-t-[36px] w-full p-6 shadow-2xl"
+            >
+              <View className="flex-row items-center justify-between pb-4 border-b border-gray-100 mb-4">
+                <View className="flex-row items-center">
+                  <View className="w-9 h-9 rounded-2xl bg-emerald-100 items-center justify-center mr-2.5">
+                    <Trees size={18} color="#166534" />
+                  </View>
+                  <View>
+                    <Text className="text-base font-black text-gray-900">
+                      Pilih Pekarangan
+                    </Text>
+                    <Text className="text-[11px] font-medium text-gray-500">
+                      Pilih pekarangan yang ingin Anda ubah datanya
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setIsSwitcherOpen(false)}
+                  activeOpacity={0.7}
+                  className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+                >
+                  <X size={16} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} className="max-h-72 mb-4">
+                <View style={{ gap: 10 }}>
+                  {lahans.map(lahan => {
+                    const isSelected = !isCreatingNew && activeLahan?.lahan_id === lahan.lahan_id;
+                    return (
+                      <TouchableOpacity
+                        key={lahan.lahan_id}
+                        onPress={() => handleSelectExistingLahan(lahan)}
+                        activeOpacity={0.8}
+                        className={`p-4 rounded-2xl border flex-row items-center justify-between ${
+                          isSelected
+                            ? 'bg-emerald-50/70 border-emerald-400'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <View className="flex-1 mr-2">
+                          <View className="flex-row items-center">
+                            <Text className="text-sm font-black text-gray-900" numberOfLines={1}>
+                              🌱 {lahan.nama_lahan}
+                            </Text>
+                            {isSelected && (
+                              <View className="bg-emerald-600 px-2 py-0.5 rounded-full ml-2">
+                                <Text className="text-[9px] font-bold text-white">
+                                  Aktif
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text className="text-xs text-gray-500 mt-1 font-medium">
+                            {lahan.luas_m2} m² • {lahan.paparan_sinar}
+                          </Text>
+                        </View>
+                        {isSelected ? (
+                          <CheckCircle2 size={20} color="#166534" />
+                        ) : (
+                          <Circle size={18} color="#9CA3AF" />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <TouchableOpacity
+                onPress={handleStartCreateNew}
+                activeOpacity={0.85}
+                style={{ gap: 8 }}
+                className="w-full bg-[#124E2A] py-3.5 rounded-2xl flex-row items-center justify-center shadow-xs"
+              >
+                <Plus size={18} color="#FFFFFF" />
+                <Text className="text-xs font-black text-white">
+                  + Buat Pekarangan Baru
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
