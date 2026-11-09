@@ -212,9 +212,14 @@ export default function WizardSetupScreen() {
     let cellsToSend = selectedCells;
 
     if (inputMode === 'manual') {
-      const requiredCellCount = Math.max(1, Math.min(TOTAL_CELLS, Math.round(finalLuas / CELL_AREA_M2)));
+      const parsed = parseFloat(manualLuas);
+      if (isNaN(parsed) || parsed < 0.25) {
+        Alert.alert('Luas Tidak Valid', 'Luas lahan minimal adalah 0.25 m²');
+        return;
+      }
+      const requiredCellCount = Math.max(1, Math.min(TOTAL_CELLS, Math.round(parsed / CELL_AREA_M2)));
       cellsToSend = Array.from({ length: requiredCellCount }, (_, i) => i);
-      finalLuas = Number((requiredCellCount * CELL_AREA_M2).toFixed(2));
+      finalLuas = Number(parsed.toFixed(2));
     } else {
       if (cellsToSend.length === 0) {
         cellsToSend = [18, 19, 26, 27]; // fallback default sel
@@ -235,7 +240,10 @@ export default function WizardSetupScreen() {
       setStep(2);
     } catch (err: any) {
       console.error('Save lahan wizard error:', err);
-      Alert.alert('Gagal Menyimpan Lahan', err?.message || 'Silakan coba beberapa saat lagi.');
+      Alert.alert(
+        'Gagal Menyimpan Lahan',
+        err?.response?.data?.message || err?.message || 'Silakan coba beberapa saat lagi.'
+      );
     } finally {
       setSavingLahan(false);
     }

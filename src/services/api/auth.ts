@@ -16,8 +16,19 @@ export interface UserProfile {
   nama: string;
   email: string;
   wilayah?: string;
+  no_hp?: string;
   avatar_url?: string | null;
   created_at?: string;
+}
+
+export interface UpdateProfilePayload {
+  nama?: string;
+  no_hp?: string;
+  provinsi?: string;
+  kota?: string;
+  kecamatan?: string;
+  kelurahan?: string;
+  wilayah?: string;
 }
 
 export const authService = {
@@ -70,7 +81,16 @@ export const authService = {
     });
   },
 
+  updateProfile: async (data: UpdateProfilePayload): Promise<UserProfile> => {
+    return request<UserProfile>('/auth/me', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   logout: (): void => {
     tokenStorage.clear();
   },
 };
+
+export const updateProfile = authService.updateProfile;
