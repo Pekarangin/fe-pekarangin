@@ -7,6 +7,8 @@ import {
   Image,
   Modal,
   Alert,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,9 +32,22 @@ import {
   X,
   Circle,
   ExternalLink,
+  Edit3,
+  Phone,
+  Save,
+  Search,
+  ArrowLeft,
+  Check,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { PaparanSinar } from '../../types';
+import { wilayahService, WilayahItem } from '../../services/api';
+
+type WilayahLevel = 'PROVINSI' | 'KOTA' | 'KECAMATAN' | 'KELURAHAN';
+
+function toTitleCase(str: string): string {
+  return str.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase());
+}
 
 export default function ProfileTab() {
   const router = useRouter();
@@ -51,9 +66,169 @@ export default function ProfileTab() {
     deleteLahan,
     activeCrops,
     startTour,
+    updateUserProfile,
   } = useApp();
 
   const [isKelolaModalOpen, setIsKelolaModalOpen] = useState(false);
+
+  // Edit Profile States
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editNama, setEditNama] = useState('');
+  const [editNoHp, setEditNoHp] = useState('');
+  const [editWilayah, setEditWilayah] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Wilayah Picker States in Edit Profile
+  const [wilayahModalVisible, setWilayahModalVisible] = useState(false);
+  const [wilayahLevel, setWilayahLevel] = useState<WilayahLevel>('KOTA');
+  const [loadingWilayah, setLoadingWilayah] = useState(false);
+  const [wilayahSearch, setWilayahSearch] = useState('');
+  const [provinces, setProvinces] = useState<WilayahItem[]>([]);
+  const [regencies, setRegencies] = useState<WilayahItem[]>([]);
+  const [districts, setDistricts] = useState<WilayahItem[]>([]);
+  const [villages, setVillages] = useState<WilayahItem[]>([]);
+  const [selectedProvince, setSelectedProvince] = useState<WilayahItem>({
+    id: '34',
+    name: 'D.I. YOGYAKARTA',
+  });
+  const [selectedRegency, setSelectedRegency] = useState<WilayahItem | null>(null);
+  const [selectedDistrict, setSelectedDistrict] = useState<WilayahItem | null>(null);
+
+  const handleOpenEditProfile = () => {
+    setEditNama(user?.nama || '');
+    setEditNoHp(user?.no_hp || '');
+    setEditWilayah(user?.wilayah || '');
+    setIsEditProfileOpen(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editNama.trim()) {
+      Alert.alert('Nama Wajib Diisi', 'Silakan masukkan nama lengkap Anda.');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      await updateUserProfile({
+        nama: editNama.trim(),
+        no_hp: editNoHp.trim(),
+        wilayah: editWilayah.trim(),
+      });
+      setIsEditProfileOpen(false);
+      Alert.alert('Sukses', 'Profil berhasil diperbarui!');
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Gagal Memperbarui Profil', e?.message || 'Terjadi kesalahan saat menyimpan profil.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const openWilayahPicker = async () => {
+    setWilayahModalVisible(true);
+    setWilayahSearch('');
+    if (regencies.length === 0) {
+      setLoadingWilayah(true);
+      try {
+        const data = await wilayahService.getRegencies(selectedProvince.id);
+        setRegencies(data);
+        setWilayahLevel('KOTA');
+      } catch (err) {
+        console.warn('Gagal ambil data kota:', err);
+      } finally {
+        setLoadingWilayah(false);
+      }
+    }
+  };
+
+  const handleSelectProvince = async (prov: WilayahItem) => {
+    setSelectedProvince(prov);
+    setSelectedRegency(null);
+    setSelectedDistrict(null);
+    setWilayahSearch('');
+    setLoadingWilayah(true);
+    try {
+      const data = await wilayahService.getRegencies(prov.id);
+      setRegencies(data);
+      setWilayahLevel('KOTA');
+    } catch (err) {
+      console.warn('Gagal ambil kabupaten:', err);
+    } finally {
+      setLoadingWilayah(false);
+    }
+  };
+
+  const handleSelectRegency = async (reg: WilayahItem) => {
+    setSelectedRegency(reg);
+    setSelectedDistrict(null);
+    setWilayahSearch('');
+    setLoadingWilayah(true);
+    try {
+      const data = await wilayahService.getDistricts(reg.id);
+      setDistricts(data);
+      setWilayahLevel('KECAMATAN');
+    } catch (err) {
+      console.warn('Gagal ambil kecamatan:', err);
+    } finally {
+      setLoadingWilayah(false);
+    }
+  };
+
+  const handleSelectDistrict = async (dist: WilayahItem) => {
+    setSelectedDistrict(dist);
+    setWilayahSearch('');
+    setLoadingWilayah(true);
+    try {
+      const data = await wilayahService.getVillages(dist.id);
+      setVillages(data);
+      setWilayahLevel('KELURAHAN');
+    } catch (err) {
+      console.warn('Gagal ambil kelurahan:', err);
+    } finally {
+      setLoadingWilayah(false);
+    }
+  };
+
+  const handleSelectVillage = (village: WilayahItem) => {
+    const formatted = `${toTitleCase(village.name)}, ${toTitleCase(selectedDistrict?.name || '')}, ${toTitleCase(selectedRegency?.name || '')}`;
+    setEditWilayah(formatted);
+    setWilayahModalVisible(false);
+  };
+
+  const handleBackLevel = async () => {
+    setWilayahSearch('');
+    if (wilayahLevel === 'KELURAHAN') {
+      setWilayahLevel('KECAMATAN');
+    } else if (wilayahLevel === 'KECAMATAN') {
+      setWilayahLevel('KOTA');
+    } else if (wilayahLevel === 'KOTA') {
+      if (provinces.length === 0) {
+        setLoadingWilayah(true);
+        try {
+          const list = await wilayahService.getProvinces();
+          setProvinces(list);
+        } catch (err) {
+          console.warn('Gagal ambil provinsi:', err);
+        } finally {
+          setLoadingWilayah(false);
+        }
+      }
+      setWilayahLevel('PROVINSI');
+    }
+  };
+
+  const currentWilayahList = () => {
+    let list: WilayahItem[] = [];
+    if (wilayahLevel === 'PROVINSI') list = provinces;
+    else if (wilayahLevel === 'KOTA') list = regencies;
+    else if (wilayahLevel === 'KECAMATAN') list = districts;
+    else if (wilayahLevel === 'KELURAHAN') list = villages;
+
+    if (!wilayahSearch.trim()) return list;
+    return list.filter(item =>
+      item.name.toLowerCase().includes(wilayahSearch.toLowerCase())
+    );
+  };
 
   const handleLogout = () => {
     logout();
@@ -145,14 +320,25 @@ export default function ProfileTab() {
             {user?.email || 'email@pekarang.in'}
           </Text>
 
-          {/* Badges Row */}
-          <View className="mt-2.5 flex-row items-center">
+          {/* Badges & Edit Profile Row */}
+          <View className="mt-2.5 flex-row items-center gap-2">
             <View className="flex-row items-center bg-[#1C7430] px-3.5 py-1.5 rounded-full shadow-xs">
               <Leaf size={13} color="#FFFFFF" fill="#FFFFFF" />
               <Text className="text-xs font-bold text-white ml-1.5 tracking-wide">
                 Urban Farmer
               </Text>
             </View>
+
+            <TouchableOpacity
+              onPress={handleOpenEditProfile}
+              activeOpacity={0.8}
+              className="flex-row items-center bg-white border border-emerald-300 px-3.5 py-1.5 rounded-full shadow-2xs"
+            >
+              <Edit3 size={12} color="#166534" />
+              <Text className="text-xs font-bold text-[#166534] ml-1.5">
+                Edit Profil
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -261,11 +447,15 @@ export default function ProfileTab() {
             <Text className="text-xs font-black text-gray-400 uppercase tracking-wider">
               Informasi Akun
             </Text>
-            <View className="bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
-              <Text className="text-[10px] font-bold text-emerald-800">
-                Terverifikasi
+            <TouchableOpacity
+              onPress={handleOpenEditProfile}
+              className="flex-row items-center bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200"
+            >
+              <Edit3 size={11} color="#166534" />
+              <Text className="text-[10px] font-bold text-emerald-800 ml-1">
+                Ubah
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
           <View style={{ gap: 14 }}>
@@ -281,6 +471,21 @@ export default function ProfileTab() {
               </View>
               <Text className="text-xs font-bold text-gray-900 max-w-[55%] text-right" numberOfLines={1}>
                 {user?.nama || '-'}
+              </Text>
+            </View>
+
+            {/* Nomor WhatsApp */}
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center">
+                <View className="w-7 h-7 rounded-lg bg-gray-50 items-center justify-center mr-2.5 border border-gray-100">
+                  <Phone size={14} color="#4B5563" />
+                </View>
+                <Text className="text-xs font-medium text-gray-500">
+                  Nomor WhatsApp
+                </Text>
+              </View>
+              <Text className="text-xs font-bold text-gray-900 max-w-[55%] text-right" numberOfLines={1}>
+                {user?.no_hp || 'Belum diisi'}
               </Text>
             </View>
 
@@ -500,6 +705,235 @@ export default function ProfileTab() {
                 Tambah Pekarangan Baru
               </Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: Edit Profil Pengguna */}
+      <Modal
+        visible={isEditProfileOpen}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setIsEditProfileOpen(false)}
+      >
+        <View className="flex-1 bg-black/65 justify-end">
+          <View
+            style={{
+              maxHeight: '90%',
+              paddingBottom: Math.max(insets.bottom, 20),
+            }}
+            className="bg-white rounded-t-[36px] w-full p-6 shadow-2xl"
+          >
+            {/* Modal Header */}
+            <View className="flex-row items-center justify-between pb-4 border-b border-gray-100 mb-4">
+              <View className="flex-row items-center">
+                <View className="w-9 h-9 rounded-2xl bg-emerald-100 items-center justify-center mr-2.5">
+                  <Edit3 size={18} color="#166534" />
+                </View>
+                <View>
+                  <Text className="text-base font-black text-gray-900">
+                    Edit Profil Pengguna
+                  </Text>
+                  <Text className="text-[11px] font-medium text-gray-500">
+                    Perbarui data diri & lokasi domisili Anda
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsEditProfileOpen(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+              >
+                <X size={16} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} className="space-y-4">
+              {/* Nama Lengkap */}
+              <View className="mb-3.5">
+                <Text className="text-xs font-bold text-gray-700 mb-1.5">
+                  Nama Lengkap <Text className="text-red-500">*</Text>
+                </Text>
+                <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-2xl px-3.5 py-2.5">
+                  <UserIcon size={16} color="#6B7280" />
+                  <TextInput
+                    value={editNama}
+                    onChangeText={setEditNama}
+                    placeholder="Masukkan nama lengkap"
+                    placeholderTextColor="#9CA3AF"
+                    className="flex-1 ml-2.5 text-xs text-gray-900 font-semibold"
+                  />
+                </View>
+              </View>
+
+              {/* Nomor WhatsApp */}
+              <View className="mb-3.5">
+                <Text className="text-xs font-bold text-gray-700 mb-1.5">
+                  Nomor WhatsApp
+                </Text>
+                <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-2xl px-3.5 py-2.5">
+                  <Phone size={16} color="#6B7280" />
+                  <TextInput
+                    value={editNoHp}
+                    onChangeText={setEditNoHp}
+                    placeholder="Contoh: 08123456789"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="phone-pad"
+                    className="flex-1 ml-2.5 text-xs text-gray-900 font-semibold"
+                  />
+                </View>
+              </View>
+
+              {/* Domisili / Wilayah */}
+              <View className="mb-4">
+                <Text className="text-xs font-bold text-gray-700 mb-1.5">
+                  Wilayah / Domisili Pekarangan
+                </Text>
+                <View className="bg-gray-50 border border-gray-200 rounded-2xl p-3">
+                  <View className="flex-row items-start mb-2">
+                    <MapPin size={16} color="#166534" style={{ marginTop: 2 }} />
+                    <Text className="flex-1 ml-2 text-xs font-bold text-emerald-950">
+                      {editWilayah || 'Belum diatur'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={openWilayahPicker}
+                    activeOpacity={0.8}
+                    className="flex-row items-center justify-center bg-emerald-50 border border-emerald-200 py-2 rounded-xl mt-1"
+                  >
+                    <Search size={13} color="#166534" />
+                    <Text className="text-xs font-bold text-[#166534] ml-1.5">
+                      Pilih dari Daftar Wilayah Indonesia
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View className="flex-row items-center gap-3 pt-2">
+                <TouchableOpacity
+                  onPress={() => setIsEditProfileOpen(false)}
+                  disabled={savingProfile}
+                  className="flex-1 py-3 rounded-2xl bg-gray-100 border border-gray-200 items-center justify-center"
+                >
+                  <Text className="text-xs font-bold text-gray-700">
+                    Batal
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleSaveProfile}
+                  disabled={savingProfile}
+                  className="flex-1 py-3 rounded-2xl bg-[#124E2A] flex-row items-center justify-center shadow-xs"
+                >
+                  {savingProfile ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Save size={15} color="#FFFFFF" />
+                      <Text className="text-xs font-black text-white ml-1.5">
+                        Simpan Perubahan
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: Wilayah Picker Cascading */}
+      <Modal
+        visible={wilayahModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setWilayahModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/65 justify-end">
+          <View
+            style={{
+              maxHeight: '88%',
+              paddingBottom: Math.max(insets.bottom, 20),
+            }}
+            className="bg-white rounded-t-[36px] w-full p-6 shadow-2xl"
+          >
+            {/* Header with Back if not top level */}
+            <View className="flex-row items-center justify-between pb-3 border-b border-gray-100 mb-3">
+              <View className="flex-row items-center flex-1">
+                {wilayahLevel !== 'PROVINSI' && (
+                  <TouchableOpacity
+                    onPress={handleBackLevel}
+                    className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center mr-2"
+                  >
+                    <ArrowLeft size={16} color="#374151" />
+                  </TouchableOpacity>
+                )}
+                <View className="flex-1">
+                  <Text className="text-base font-black text-gray-900">
+                    Pilih {wilayahLevel === 'PROVINSI' ? 'Provinsi' : wilayahLevel === 'KOTA' ? 'Kota / Kabupaten' : wilayahLevel === 'KECAMATAN' ? 'Kecamatan' : 'Kelurahan / Desa'}
+                  </Text>
+                  <Text className="text-[10px] text-gray-500" numberOfLines={1}>
+                    {wilayahLevel === 'PROVINSI' ? 'Langkah 1/4' : wilayahLevel === 'KOTA' ? `Provinsi: ${toTitleCase(selectedProvince.name)}` : wilayahLevel === 'KECAMATAN' ? `Kota: ${toTitleCase(selectedRegency?.name || '')}` : `Kecamatan: ${toTitleCase(selectedDistrict?.name || '')}`}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setWilayahModalVisible(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center ml-2"
+              >
+                <X size={16} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Input */}
+            <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2 mb-3">
+              <Search size={15} color="#9CA3AF" />
+              <TextInput
+                value={wilayahSearch}
+                onChangeText={setWilayahSearch}
+                placeholder="Cari wilayah..."
+                placeholderTextColor="#9CA3AF"
+                className="flex-1 ml-2 text-xs text-gray-900"
+              />
+            </View>
+
+            {/* List */}
+            {loadingWilayah ? (
+              <View className="py-12 items-center justify-center">
+                <ActivityIndicator size="small" color="#166534" />
+                <Text className="text-xs text-gray-500 mt-2 font-medium">
+                  Memuat data wilayah...
+                </Text>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} className="max-h-80">
+                {currentWilayahList().length === 0 ? (
+                  <View className="py-8 items-center justify-center">
+                    <Text className="text-xs text-gray-500">
+                      Tidak ada wilayah ditemukan
+                    </Text>
+                  </View>
+                ) : (
+                  currentWilayahList().map(item => (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => {
+                        if (wilayahLevel === 'PROVINSI') handleSelectProvince(item);
+                        else if (wilayahLevel === 'KOTA') handleSelectRegency(item);
+                        else if (wilayahLevel === 'KECAMATAN') handleSelectDistrict(item);
+                        else if (wilayahLevel === 'KELURAHAN') handleSelectVillage(item);
+                      }}
+                      className="py-3 px-3.5 border-b border-gray-100 flex-row items-center justify-between"
+                    >
+                      <Text className="text-xs font-semibold text-gray-800">
+                        {toTitleCase(item.name)}
+                      </Text>
+                      <ChevronRight size={14} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>

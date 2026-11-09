@@ -10,6 +10,7 @@ export interface User {
   email: string;
   avatar_url?: string | null;
   wilayah?: string;
+  no_hp?: string;
   created_at?: string;
 }
 
@@ -78,6 +79,22 @@ export interface TanamanAktif {
     pupuk_done: boolean;
     catatan?: string | null;
   };
+  realisasiPanen?: {
+    berat_kg?: number;
+    berat_panen_gram?: number;
+    nilai_ekonomi_hemat?: number;
+    estimasi_hemat_rp?: number;
+    tanggal_panen?: string;
+  };
+  realisasi_panen?: {
+    berat_kg?: number;
+    berat_panen_gram?: number;
+    nilai_ekonomi_hemat?: number;
+    estimasi_hemat_rp?: number;
+    tanggal_panen?: string;
+  };
+  berat_panen_kg?: number;
+  penghematan_rp?: number;
 }
 
 export interface CatatanHarian {

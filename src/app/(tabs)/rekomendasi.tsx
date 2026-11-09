@@ -385,6 +385,16 @@ export default function RekomendasiTab() {
                     />
                   </View>
 
+                  {/* Warning Badge: Lahan Kurang Luas */}
+                  {activeLahan && Number(activeLahan.luas_m2) < item.luas_dibutuhkan_m2 && (
+                    <View className="mb-3 flex-row items-center bg-amber-50 border border-amber-300 px-3 py-2 rounded-xl">
+                      <AlertCircle size={14} color="#B45309" style={{ marginRight: 6 }} />
+                      <Text className="text-xs font-bold text-amber-900 flex-1">
+                        ⚠️ Butuh Min. {item.luas_dibutuhkan_m2} m² (Lahanmu: {activeLahan.luas_m2} m²)
+                      </Text>
+                    </View>
+                  )}
+
                   {/* Info Meta Grid */}
                   <View className="space-y-2 mb-4 bg-[#F9FAFB] p-3.5 rounded-2xl border border-gray-100">
                     <View className="flex-row items-center justify-between">
@@ -531,6 +541,16 @@ export default function RekomendasiTab() {
                         </Text>
                       </View>
                     </View>
+
+                    {/* Warning Badge in Modal if Lahan Kurang Luas */}
+                    {activeLahan && Number(activeLahan.luas_m2) < selectedDetailItem.luas_dibutuhkan_m2 && (
+                      <View className="bg-amber-50 border border-amber-300 p-3.5 rounded-2xl mb-4 flex-row items-center">
+                        <AlertCircle size={16} color="#B45309" style={{ marginRight: 8 }} />
+                        <Text className="text-xs font-bold text-amber-900 flex-1">
+                          ⚠️ Butuh Min. {selectedDetailItem.luas_dibutuhkan_m2} m² (Lahanmu: {activeLahan.luas_m2} m²)
+                        </Text>
+                      </View>
+                    )}
 
                     {/* Panduan Singkat Box */}
                     <View className="bg-emerald-50/70 border border-emerald-100 p-4 rounded-2xl mb-4">

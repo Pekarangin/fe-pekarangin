@@ -10,6 +10,7 @@ import {
 import {
   authService,
   AuthUserData,
+  UpdateProfilePayload,
   lahanService,
   trackingService,
   rekomendasiService,
@@ -34,6 +35,7 @@ interface AppContextType {
   loginWithGoogle: (idToken: string) => Promise<AuthUserData>;
   logout: () => void;
   register: (nama: string, email: string, password?: string, wilayah?: string) => Promise<void>;
+  updateUserProfile: (data: UpdateProfilePayload) => Promise<void>;
   fetchRemoteUserData: () => Promise<void>;
 
   
@@ -171,14 +173,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveCrops([]);
       }
 
-      // Compute dynamic stats from actual user data
+      // Compute dynamic stats from actual user data (realisasi panen dari database)
       const rthArea = loadedLahans.reduce((acc, l) => acc + (Number(l.luas_m2) || 0), 0);
-      const totalPanenKg = loadedCrops
-        .filter(c => c.status === 'PANEN')
-        .reduce((acc) => acc + 0.35, 0);
-      const totalHemat = loadedCrops
-        .filter(c => c.status === 'PANEN')
-        .reduce((acc) => acc + 15000, 0);
+      const totalPanenKg = loadedCrops.reduce((acc, c) => {
+        if (c.status !== 'PANEN') return acc;
+        const rp = c.realisasiPanen || c.realisasi_panen;
+        const berat = rp?.berat_kg ?? (rp?.berat_panen_gram ? rp.berat_panen_gram / 1000 : undefined) ?? c.berat_panen_kg ?? 0;
+        return acc + Number(berat);
+      }, 0);
+
+      const totalHemat = loadedCrops.reduce((acc, c) => {
+        if (c.status !== 'PANEN') return acc;
+        const rp = c.realisasiPanen || c.realisasi_panen;
+        const hemat = rp?.nilai_ekonomi_hemat ?? rp?.estimasi_hemat_rp ?? c.penghematan_rp ?? 0;
+        return acc + Number(hemat);
+      }, 0);
 
       const hasDoneChecklist = loadedCrops.some(
         c => c.checklist_hari_ini?.siram_done || c.checklist_hari_ini?.pupuk_done
@@ -640,19 +649,32 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
     setStats(EMPTY_STATS);
   };
 
-  const createLahan = async (newLahanData: Omit<Lahan, 'lahan_id' | 'created_at'>): Promise<Lahan> => {
-    let createdLahan: Lahan;
-    try {
-      createdLahan = await lahanService.create(newLahanData);
-    } catch (e) {
-      console.warn('API createLahan error, fallback ke local:', e);
-      createdLahan = {
-        ...newLahanData,
-        lahan_id: 'lah-' + Date.now(),
-        created_at: new Date().toISOString(),
-        jumlah_tanaman_aktif: 0,
-      };
+  const updateUserProfile = async (data: UpdateProfilePayload) => {
+    const updated = await authService.updateProfile(data);
+    const formattedWilayah =
+      updated.wilayah ||
+      data.wilayah ||
+      [data.kelurahan, data.kecamatan, data.kota, data.provinsi].filter(Boolean).join(', ');
+
+    if (formattedWilayah) {
+      profileStorage.setWilayah(formattedWilayah);
     }
+
+    setUser(prev => {
+      if (!prev) return prev;
+      const newUser: User = {
+        ...prev,
+        nama: updated.nama || data.nama || prev.nama,
+        wilayah: formattedWilayah || prev.wilayah,
+        no_hp: updated.no_hp || data.no_hp || prev.no_hp,
+      };
+      userStorage.set(newUser);
+      return newUser;
+    });
+  };
+
+  const createLahan = async (newLahanData: Omit<Lahan, 'lahan_id' | 'created_at'>): Promise<Lahan> => {
+    const createdLahan = await lahanService.create(newLahanData);
 
     setLahans(prev => [createdLahan, ...prev.filter(l => l.lahan_id !== createdLahan.lahan_id)]);
     setActiveLahan(createdLahan);
@@ -685,23 +707,7 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
   };
 
   const updateLahan = async (id: string, updateData: Partial<Omit<Lahan, 'lahan_id' | 'created_at'>>): Promise<Lahan> => {
-    let updatedLahan: Lahan;
-    try {
-      if (!id.startsWith('lah-')) {
-        updatedLahan = await lahanService.update(id, updateData);
-      } else {
-        throw new Error('Local lahan');
-      }
-    } catch (e) {
-      console.warn('API updateLahan error, fallback ke local:', e);
-      const existing = lahans.find(l => l.lahan_id === id) || activeLahan;
-      updatedLahan = {
-        ...existing!,
-        ...updateData,
-        lahan_id: id,
-        created_at: existing?.created_at || new Date().toISOString(),
-      };
-    }
+    const updatedLahan = await lahanService.update(id, updateData);
 
     setLahans(prev => prev.map(l => (l.lahan_id === id ? updatedLahan : l)));
     if (activeLahan?.lahan_id === id) {
@@ -767,21 +773,10 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
 
   const saveLahan = async (newLahanData: Omit<Lahan, 'lahan_id' | 'created_at'>): Promise<Lahan> => {
     let createdLahan: Lahan;
-    try {
-      if (activeLahan && activeLahan.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
-        createdLahan = await lahanService.update(activeLahan.lahan_id, newLahanData);
-      } else {
-        createdLahan = await lahanService.create(newLahanData);
-      }
-    } catch (e) {
-      console.warn('API saveLahan error, fallback ke local:', e);
-      const activeCount = activeCrops.filter(c => c.status === 'AKTIF').length;
-      createdLahan = {
-        ...newLahanData,
-        lahan_id: activeLahan?.lahan_id || 'lah-' + Date.now(),
-        created_at: activeLahan?.created_at || new Date().toISOString(),
-        jumlah_tanaman_aktif: activeCount,
-      };
+    if (activeLahan && activeLahan.lahan_id && !activeLahan.lahan_id.startsWith('lah-')) {
+      createdLahan = await lahanService.update(activeLahan.lahan_id, newLahanData);
+    } else {
+      createdLahan = await lahanService.create(newLahanData);
     }
 
     setLahans(prev => {
@@ -820,24 +815,17 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
   };
 
   const toggleChecklistSiram = (cropId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    let prevCrop: TanamanAktif | undefined;
+
     setActiveCrops(prev =>
       prev.map(c => {
         if (c.tanaman_aktif_id === cropId) {
+          prevCrop = c;
           const current = c.checklist_hari_ini?.siram_done ?? false;
           const nextSiram = !current;
           const pupukDone = c.checklist_hari_ini?.pupuk_done ?? false;
           const catatan = c.checklist_hari_ini?.catatan ?? null;
-
-          if (!cropId.startsWith('crop-')) {
-            trackingService
-              .submitChecklist(cropId, {
-                tanggal: new Date().toISOString().split('T')[0],
-                siram_done: nextSiram,
-                pupuk_done: pupukDone,
-                catatan: catatan || undefined,
-              })
-              .catch(err => console.warn('Checklist siram sync error:', err));
-          }
 
           return {
             ...c,
@@ -851,27 +839,40 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
         return c;
       })
     );
+
+    if (prevCrop && !cropId.startsWith('crop-')) {
+      const nextSiram = !(prevCrop.checklist_hari_ini?.siram_done ?? false);
+      const pupukDone = prevCrop.checklist_hari_ini?.pupuk_done ?? false;
+      const catatan = prevCrop.checklist_hari_ini?.catatan ?? undefined;
+
+      trackingService
+        .submitChecklist(cropId, {
+          tanggal: today,
+          siram_done: nextSiram,
+          pupuk_done: pupukDone,
+          catatan: catatan || undefined,
+        })
+        .catch(err => {
+          console.warn('Checklist siram sync error, rollback:', err);
+          setActiveCrops(prev =>
+            prev.map(c => (c.tanaman_aktif_id === cropId ? prevCrop! : c))
+          );
+        });
+    }
   };
 
   const toggleChecklistPupuk = (cropId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    let prevCrop: TanamanAktif | undefined;
+
     setActiveCrops(prev =>
       prev.map(c => {
         if (c.tanaman_aktif_id === cropId) {
+          prevCrop = c;
           const current = c.checklist_hari_ini?.pupuk_done ?? false;
           const nextPupuk = !current;
           const siramDone = c.checklist_hari_ini?.siram_done ?? false;
           const catatan = c.checklist_hari_ini?.catatan ?? null;
-
-          if (!cropId.startsWith('crop-')) {
-            trackingService
-              .submitChecklist(cropId, {
-                tanggal: new Date().toISOString().split('T')[0],
-                siram_done: siramDone,
-                pupuk_done: nextPupuk,
-                catatan: catatan || undefined,
-              })
-              .catch(err => console.warn('Checklist pupuk sync error:', err));
-          }
 
           return {
             ...c,
@@ -885,13 +886,38 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
         return c;
       })
     );
+
+    if (prevCrop && !cropId.startsWith('crop-')) {
+      const nextPupuk = !(prevCrop.checklist_hari_ini?.pupuk_done ?? false);
+      const siramDone = prevCrop.checklist_hari_ini?.siram_done ?? false;
+      const catatan = prevCrop.checklist_hari_ini?.catatan ?? undefined;
+
+      trackingService
+        .submitChecklist(cropId, {
+          tanggal: today,
+          siram_done: siramDone,
+          pupuk_done: nextPupuk,
+          catatan: catatan || undefined,
+        })
+        .catch(err => {
+          console.warn('Checklist pupuk sync error, rollback:', err);
+          setActiveCrops(prev =>
+            prev.map(c => (c.tanaman_aktif_id === cropId ? prevCrop! : c))
+          );
+        });
+    }
   };
 
   const toggleAllSiram = (forceDone?: boolean) => {
+    const today = new Date().toISOString().split('T')[0];
+    let previousCrops: TanamanAktif[] = [];
+    let nextState = false;
+
     setActiveCrops(prev => {
+      previousCrops = prev;
       const activeOnly = prev.filter(c => c.status === 'AKTIF');
       const allDone = activeOnly.length > 0 && activeOnly.every(c => c.checklist_hari_ini?.siram_done);
-      const nextState = forceDone !== undefined ? forceDone : !allDone;
+      nextState = forceDone !== undefined ? forceDone : !allDone;
 
       return prev.map(c => {
         if (c.status === 'AKTIF') {
@@ -907,13 +933,40 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
         return c;
       });
     });
+
+    // Background sync to backend for all active crops
+    const activeTargets = previousCrops.filter(
+      c => c.status === 'AKTIF' && !c.tanaman_aktif_id.startsWith('crop-')
+    );
+    if (activeTargets.length > 0) {
+      Promise.allSettled(
+        activeTargets.map(c =>
+          trackingService.submitChecklist(c.tanaman_aktif_id, {
+            tanggal: today,
+            siram_done: nextState,
+            pupuk_done: c.checklist_hari_ini?.pupuk_done ?? false,
+            catatan: c.checklist_hari_ini?.catatan || undefined,
+          })
+        )
+      ).then(results => {
+        const hasErrors = results.some(r => r.status === 'rejected');
+        if (hasErrors) {
+          console.warn('Sebagian / semua checklist siram gagal disimpan ke backend');
+        }
+      });
+    }
   };
 
   const toggleAllPupuk = (forceDone?: boolean) => {
+    const today = new Date().toISOString().split('T')[0];
+    let previousCrops: TanamanAktif[] = [];
+    let nextState = false;
+
     setActiveCrops(prev => {
+      previousCrops = prev;
       const activeOnly = prev.filter(c => c.status === 'AKTIF');
       const allDone = activeOnly.length > 0 && activeOnly.every(c => c.checklist_hari_ini?.pupuk_done);
-      const nextState = forceDone !== undefined ? forceDone : !allDone;
+      nextState = forceDone !== undefined ? forceDone : !allDone;
 
       return prev.map(c => {
         if (c.status === 'AKTIF') {
@@ -929,6 +982,28 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
         return c;
       });
     });
+
+    // Background sync to backend for all active crops
+    const activeTargets = previousCrops.filter(
+      c => c.status === 'AKTIF' && !c.tanaman_aktif_id.startsWith('crop-')
+    );
+    if (activeTargets.length > 0) {
+      Promise.allSettled(
+        activeTargets.map(c =>
+          trackingService.submitChecklist(c.tanaman_aktif_id, {
+            tanggal: today,
+            siram_done: c.checklist_hari_ini?.siram_done ?? false,
+            pupuk_done: nextState,
+            catatan: c.checklist_hari_ini?.catatan || undefined,
+          })
+        )
+      ).then(results => {
+        const hasErrors = results.some(r => r.status === 'rejected');
+        if (hasErrors) {
+          console.warn('Sebagian / semua checklist pupuk gagal disimpan ke backend');
+        }
+      });
+    }
   };
 
   const addTanamanAktif = async (komoditasId: string, komoditasNama: string) => {
@@ -1081,6 +1156,7 @@ function diversifyRecommendations(items: RekomendasiItem[]): RekomendasiItem[] {
         loginWithGoogle,
         logout,
         register,
+        updateUserProfile,
         fetchRemoteUserData,
         lahans,
         activeLahan,
