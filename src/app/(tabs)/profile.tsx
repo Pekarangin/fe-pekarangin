@@ -22,32 +22,20 @@ import {
   MapPin,
   Mail,
   Leaf,
-  CheckCircle2,
   Calendar,
-  Layers,
   ChevronRight,
   Sparkles,
   Plus,
   Trash2,
   X,
-  Circle,
-  ExternalLink,
   Edit3,
-  Phone,
   Save,
   Search,
-  ArrowLeft,
-  Check,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { PaparanSinar } from '../../types';
-import { wilayahService, WilayahItem } from '../../services/api';
-
-type WilayahLevel = 'PROVINSI' | 'KOTA' | 'KECAMATAN' | 'KELURAHAN';
-
-function toTitleCase(str: string): string {
-  return str.replace(/\w\S*/g, txt => txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase());
-}
+import { WilayahPickerModal } from '../../components/ui/WilayahPickerModal';
+import { DeleteLahanModal } from '../../components/ui/DeleteLahanModal';
 
 export default function ProfileTab() {
   const router = useRouter();
@@ -62,9 +50,9 @@ export default function ProfileTab() {
     logout,
     lahans,
     activeLahan,
+    activeCrops,
     setActiveLahan,
     deleteLahan,
-    activeCrops,
     startTour,
     updateUserProfile,
   } = useApp();
@@ -74,29 +62,14 @@ export default function ProfileTab() {
   // Edit Profile States
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [editNama, setEditNama] = useState('');
-  const [editNoHp, setEditNoHp] = useState('');
   const [editWilayah, setEditWilayah] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // Wilayah Picker States in Edit Profile
+  // Wilayah Picker Modal State
   const [wilayahModalVisible, setWilayahModalVisible] = useState(false);
-  const [wilayahLevel, setWilayahLevel] = useState<WilayahLevel>('KOTA');
-  const [loadingWilayah, setLoadingWilayah] = useState(false);
-  const [wilayahSearch, setWilayahSearch] = useState('');
-  const [provinces, setProvinces] = useState<WilayahItem[]>([]);
-  const [regencies, setRegencies] = useState<WilayahItem[]>([]);
-  const [districts, setDistricts] = useState<WilayahItem[]>([]);
-  const [villages, setVillages] = useState<WilayahItem[]>([]);
-  const [selectedProvince, setSelectedProvince] = useState<WilayahItem>({
-    id: '34',
-    name: 'D.I. YOGYAKARTA',
-  });
-  const [selectedRegency, setSelectedRegency] = useState<WilayahItem | null>(null);
-  const [selectedDistrict, setSelectedDistrict] = useState<WilayahItem | null>(null);
 
   const handleOpenEditProfile = () => {
     setEditNama(user?.nama || '');
-    setEditNoHp(user?.no_hp || '');
     setEditWilayah(user?.wilayah || '');
     setIsEditProfileOpen(true);
   };
@@ -111,145 +84,49 @@ export default function ProfileTab() {
     try {
       await updateUserProfile({
         nama: editNama.trim(),
-        no_hp: editNoHp.trim(),
         wilayah: editWilayah.trim(),
       });
       setIsEditProfileOpen(false);
       Alert.alert('Sukses', 'Profil berhasil diperbarui!');
     } catch (e: any) {
       console.error(e);
-      Alert.alert('Gagal Memperbarui Profil', e?.message || 'Terjadi kesalahan saat menyimpan profil.');
+      Alert.alert(
+        'Gagal Memperbarui Profil',
+        e?.response?.data?.message || e?.message || 'Terjadi kesalahan saat menyimpan profil.'
+      );
     } finally {
       setSavingProfile(false);
     }
   };
 
-  const openWilayahPicker = async () => {
+  const openWilayahPicker = () => {
     setWilayahModalVisible(true);
-    setWilayahSearch('');
-    if (regencies.length === 0) {
-      setLoadingWilayah(true);
-      try {
-        const data = await wilayahService.getRegencies(selectedProvince.id);
-        setRegencies(data);
-        setWilayahLevel('KOTA');
-      } catch (err) {
-        console.warn('Gagal ambil data kota:', err);
-      } finally {
-        setLoadingWilayah(false);
-      }
-    }
   };
 
-  const handleSelectProvince = async (prov: WilayahItem) => {
-    setSelectedProvince(prov);
-    setSelectedRegency(null);
-    setSelectedDistrict(null);
-    setWilayahSearch('');
-    setLoadingWilayah(true);
-    try {
-      const data = await wilayahService.getRegencies(prov.id);
-      setRegencies(data);
-      setWilayahLevel('KOTA');
-    } catch (err) {
-      console.warn('Gagal ambil kabupaten:', err);
-    } finally {
-      setLoadingWilayah(false);
-    }
-  };
 
-  const handleSelectRegency = async (reg: WilayahItem) => {
-    setSelectedRegency(reg);
-    setSelectedDistrict(null);
-    setWilayahSearch('');
-    setLoadingWilayah(true);
-    try {
-      const data = await wilayahService.getDistricts(reg.id);
-      setDistricts(data);
-      setWilayahLevel('KECAMATAN');
-    } catch (err) {
-      console.warn('Gagal ambil kecamatan:', err);
-    } finally {
-      setLoadingWilayah(false);
-    }
-  };
 
-  const handleSelectDistrict = async (dist: WilayahItem) => {
-    setSelectedDistrict(dist);
-    setWilayahSearch('');
-    setLoadingWilayah(true);
-    try {
-      const data = await wilayahService.getVillages(dist.id);
-      setVillages(data);
-      setWilayahLevel('KELURAHAN');
-    } catch (err) {
-      console.warn('Gagal ambil kelurahan:', err);
-    } finally {
-      setLoadingWilayah(false);
-    }
-  };
 
-  const handleSelectVillage = (village: WilayahItem) => {
-    const formatted = `${toTitleCase(village.name)}, ${toTitleCase(selectedDistrict?.name || '')}, ${toTitleCase(selectedRegency?.name || '')}`;
-    setEditWilayah(formatted);
-    setWilayahModalVisible(false);
-  };
-
-  const handleBackLevel = async () => {
-    setWilayahSearch('');
-    if (wilayahLevel === 'KELURAHAN') {
-      setWilayahLevel('KECAMATAN');
-    } else if (wilayahLevel === 'KECAMATAN') {
-      setWilayahLevel('KOTA');
-    } else if (wilayahLevel === 'KOTA') {
-      if (provinces.length === 0) {
-        setLoadingWilayah(true);
-        try {
-          const list = await wilayahService.getProvinces();
-          setProvinces(list);
-        } catch (err) {
-          console.warn('Gagal ambil provinsi:', err);
-        } finally {
-          setLoadingWilayah(false);
-        }
-      }
-      setWilayahLevel('PROVINSI');
-    }
-  };
-
-  const currentWilayahList = () => {
-    let list: WilayahItem[] = [];
-    if (wilayahLevel === 'PROVINSI') list = provinces;
-    else if (wilayahLevel === 'KOTA') list = regencies;
-    else if (wilayahLevel === 'KECAMATAN') list = districts;
-    else if (wilayahLevel === 'KELURAHAN') list = villages;
-
-    if (!wilayahSearch.trim()) return list;
-    return list.filter(item =>
-      item.name.toLowerCase().includes(wilayahSearch.toLowerCase())
-    );
-  };
 
   const handleLogout = () => {
     logout();
     router.replace('/(auth)/login');
   };
 
-  const handleDeleteLahan = (id: string, nama: string) => {
-    Alert.alert(
-      'Hapus Pekarangan',
-      `Apakah Anda yakin ingin menghapus "${nama}"? Data tanaman terkait juga akan dihapus.`,
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Hapus',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteLahan(id);
-          },
-        },
-      ]
-    );
+  const [lahanToDelete, setLahanToDelete] = useState<any | null>(null);
+  const [isDeletingLahan, setIsDeletingLahan] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!lahanToDelete) return;
+    try {
+      setIsDeletingLahan(true);
+      await deleteLahan(lahanToDelete.lahan_id);
+      setLahanToDelete(null);
+    } catch (err: any) {
+      const errMsg = err?.message || 'Terjadi kesalahan saat menghapus pekarangan.';
+      Alert.alert('Gagal Menghapus', errMsg);
+    } finally {
+      setIsDeletingLahan(false);
+    }
   };
 
   const formatPaparanSinar = (sinar?: PaparanSinar) => {
@@ -264,8 +141,6 @@ export default function ProfileTab() {
         return 'Sinar Penuh';
     }
   };
-
-  const activeOnlyCrops = activeCrops.filter(c => c.status === 'AKTIF');
 
   const formattedJoinDate = user?.created_at
     ? new Date(user.created_at).toLocaleDateString('id-ID', {
@@ -345,28 +220,32 @@ export default function ProfileTab() {
         {/* 3-Column Compact Metric Grid */}
         <View className="flex-row gap-2 mb-6">
           {/* Col 1: Total Panen */}
-          <View className="flex-1 bg-white rounded-3xl p-3 border border-gray-100 shadow-sm shadow-black/5 items-center justify-center">
-            <View className="w-8 h-8 rounded-full bg-emerald-50 items-center justify-center mb-1.5">
+          <View className="flex-1 bg-white rounded-3xl p-3 border border-gray-100 shadow-sm shadow-black/5 items-center justify-between min-h-[110px]">
+            <View className="w-8 h-8 rounded-full bg-emerald-50 items-center justify-center mb-1">
               <Sprout size={16} color="#166534" />
             </View>
-            <Text className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-              Total Panen
-            </Text>
-            <Text className="text-base font-black text-gray-900 mt-0.5">
+            <View className="h-7 items-center justify-center">
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-wide text-center leading-tight">
+                Total Panen
+              </Text>
+            </View>
+            <Text className="text-sm font-black text-gray-900 text-center" numberOfLines={1}>
               {stats.total_panen_kg} kg
             </Text>
           </View>
 
           {/* Col 2: Total Hemat */}
-          <View className="flex-1 bg-white rounded-3xl p-3 border border-gray-100 shadow-sm shadow-black/5 items-center justify-center">
-            <View className="w-8 h-8 rounded-full bg-emerald-50 items-center justify-center mb-1.5">
+          <View className="flex-1 bg-white rounded-3xl p-3 border border-gray-100 shadow-sm shadow-black/5 items-center justify-between min-h-[110px]">
+            <View className="w-8 h-8 rounded-full bg-emerald-50 items-center justify-center mb-1">
               <PiggyBank size={16} color="#166534" />
             </View>
-            <Text className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-              Total Hemat
-            </Text>
+            <View className="h-7 items-center justify-center">
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-wide text-center leading-tight">
+                Total Hemat
+              </Text>
+            </View>
             <Text
-              className="text-sm font-black text-gray-900 mt-0.5"
+              className="text-sm font-black text-gray-900 text-center"
               numberOfLines={1}
               adjustsFontSizeToFit
             >
@@ -375,14 +254,16 @@ export default function ProfileTab() {
           </View>
 
           {/* Col 3: RTH Aktif */}
-          <View className="flex-1 bg-white rounded-3xl p-3 border border-gray-100 shadow-sm shadow-black/5 items-center justify-center">
-            <View className="w-8 h-8 rounded-full bg-emerald-50 items-center justify-center mb-1.5">
+          <View className="flex-1 bg-white rounded-3xl p-3 border border-gray-100 shadow-sm shadow-black/5 items-center justify-between min-h-[110px]">
+            <View className="w-8 h-8 rounded-full bg-emerald-50 items-center justify-center mb-1">
               <Trees size={16} color="#166534" />
             </View>
-            <Text className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-              RTH Aktif
-            </Text>
-            <Text className="text-base font-black text-gray-900 mt-0.5">
+            <View className="h-7 items-center justify-center">
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-wide text-center leading-tight">
+                RTH Aktif
+              </Text>
+            </View>
+            <Text className="text-sm font-black text-gray-900 text-center" numberOfLines={1}>
               {stats.rth_aktif_m2} m²
             </Text>
           </View>
@@ -471,21 +352,6 @@ export default function ProfileTab() {
               </View>
               <Text className="text-xs font-bold text-gray-900 max-w-[55%] text-right" numberOfLines={1}>
                 {user?.nama || '-'}
-              </Text>
-            </View>
-
-            {/* Nomor WhatsApp */}
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center">
-                <View className="w-7 h-7 rounded-lg bg-gray-50 items-center justify-center mr-2.5 border border-gray-100">
-                  <Phone size={14} color="#4B5563" />
-                </View>
-                <Text className="text-xs font-medium text-gray-500">
-                  Nomor WhatsApp
-                </Text>
-              </View>
-              <Text className="text-xs font-bold text-gray-900 max-w-[55%] text-right" numberOfLines={1}>
-                {user?.no_hp || 'Belum diisi'}
               </Text>
             </View>
 
@@ -646,7 +512,7 @@ export default function ProfileTab() {
 
                           {/* Quick delete button */}
                           <TouchableOpacity
-                            onPress={() => handleDeleteLahan(lahan.lahan_id, lahan.nama_lahan)}
+                            onPress={() => setLahanToDelete(lahan)}
                             activeOpacity={0.7}
                             className="w-8 h-8 rounded-xl bg-red-50 border border-red-200 items-center justify-center"
                           >
@@ -765,24 +631,6 @@ export default function ProfileTab() {
                 </View>
               </View>
 
-              {/* Nomor WhatsApp */}
-              <View className="mb-3.5">
-                <Text className="text-xs font-bold text-gray-700 mb-1.5">
-                  Nomor WhatsApp
-                </Text>
-                <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-2xl px-3.5 py-2.5">
-                  <Phone size={16} color="#6B7280" />
-                  <TextInput
-                    value={editNoHp}
-                    onChangeText={setEditNoHp}
-                    placeholder="Contoh: 08123456789"
-                    placeholderTextColor="#9CA3AF"
-                    keyboardType="phone-pad"
-                    className="flex-1 ml-2.5 text-xs text-gray-900 font-semibold"
-                  />
-                </View>
-              </View>
-
               {/* Domisili / Wilayah */}
               <View className="mb-4">
                 <Text className="text-xs font-bold text-gray-700 mb-1.5">
@@ -843,100 +691,21 @@ export default function ProfileTab() {
       </Modal>
 
       {/* Modal: Wilayah Picker Cascading */}
-      <Modal
+      <WilayahPickerModal
         visible={wilayahModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setWilayahModalVisible(false)}
-      >
-        <View className="flex-1 bg-black/65 justify-end">
-          <View
-            style={{
-              maxHeight: '88%',
-              paddingBottom: Math.max(insets.bottom, 20),
-            }}
-            className="bg-white rounded-t-[36px] w-full p-6 shadow-2xl"
-          >
-            {/* Header with Back if not top level */}
-            <View className="flex-row items-center justify-between pb-3 border-b border-gray-100 mb-3">
-              <View className="flex-row items-center flex-1">
-                {wilayahLevel !== 'PROVINSI' && (
-                  <TouchableOpacity
-                    onPress={handleBackLevel}
-                    className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center mr-2"
-                  >
-                    <ArrowLeft size={16} color="#374151" />
-                  </TouchableOpacity>
-                )}
-                <View className="flex-1">
-                  <Text className="text-base font-black text-gray-900">
-                    Pilih {wilayahLevel === 'PROVINSI' ? 'Provinsi' : wilayahLevel === 'KOTA' ? 'Kota / Kabupaten' : wilayahLevel === 'KECAMATAN' ? 'Kecamatan' : 'Kelurahan / Desa'}
-                  </Text>
-                  <Text className="text-[10px] text-gray-500" numberOfLines={1}>
-                    {wilayahLevel === 'PROVINSI' ? 'Langkah 1/4' : wilayahLevel === 'KOTA' ? `Provinsi: ${toTitleCase(selectedProvince.name)}` : wilayahLevel === 'KECAMATAN' ? `Kota: ${toTitleCase(selectedRegency?.name || '')}` : `Kecamatan: ${toTitleCase(selectedDistrict?.name || '')}`}
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={() => setWilayahModalVisible(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center ml-2"
-              >
-                <X size={16} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
+        onClose={() => setWilayahModalVisible(false)}
+        onSelectWilayah={formatted => setEditWilayah(formatted)}
+      />
 
-            {/* Search Input */}
-            <View className="flex-row items-center bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2 mb-3">
-              <Search size={15} color="#9CA3AF" />
-              <TextInput
-                value={wilayahSearch}
-                onChangeText={setWilayahSearch}
-                placeholder="Cari wilayah..."
-                placeholderTextColor="#9CA3AF"
-                className="flex-1 ml-2 text-xs text-gray-900"
-              />
-            </View>
-
-            {/* List */}
-            {loadingWilayah ? (
-              <View className="py-12 items-center justify-center">
-                <ActivityIndicator size="small" color="#166534" />
-                <Text className="text-xs text-gray-500 mt-2 font-medium">
-                  Memuat data wilayah...
-                </Text>
-              </View>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false} className="max-h-80">
-                {currentWilayahList().length === 0 ? (
-                  <View className="py-8 items-center justify-center">
-                    <Text className="text-xs text-gray-500">
-                      Tidak ada wilayah ditemukan
-                    </Text>
-                  </View>
-                ) : (
-                  currentWilayahList().map(item => (
-                    <TouchableOpacity
-                      key={item.id}
-                      onPress={() => {
-                        if (wilayahLevel === 'PROVINSI') handleSelectProvince(item);
-                        else if (wilayahLevel === 'KOTA') handleSelectRegency(item);
-                        else if (wilayahLevel === 'KECAMATAN') handleSelectDistrict(item);
-                        else if (wilayahLevel === 'KELURAHAN') handleSelectVillage(item);
-                      }}
-                      className="py-3 px-3.5 border-b border-gray-100 flex-row items-center justify-between"
-                    >
-                      <Text className="text-xs font-semibold text-gray-800">
-                        {toTitleCase(item.name)}
-                      </Text>
-                      <ChevronRight size={14} color="#9CA3AF" />
-                    </TouchableOpacity>
-                  ))
-                )}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
+      {/* Modal Konfirmasi Hapus Lahan Custom Card */}
+      <DeleteLahanModal
+        visible={!!lahanToDelete}
+        lahan={lahanToDelete}
+        activeCrops={activeCrops}
+        isDeleting={isDeletingLahan}
+        onClose={() => setLahanToDelete(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </View>
   );
 }

@@ -35,6 +35,13 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 140
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Izinkan Pekarang.In mengakses galeri foto untuk analisis sinar pekarangan.",
+          "cameraPermission": "Izinkan Pekarang.In mengakses kamera untuk memotret intensitas sinar pekarangan."
+        }
       ]
     ],
     "experiments": {

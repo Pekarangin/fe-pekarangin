@@ -16,14 +16,13 @@ export interface UserProfile {
   nama: string;
   email: string;
   wilayah?: string;
-  no_hp?: string;
   avatar_url?: string | null;
   created_at?: string;
 }
 
 export interface UpdateProfilePayload {
   nama?: string;
-  no_hp?: string;
+  email?: string;
   provinsi?: string;
   kota?: string;
   kecamatan?: string;

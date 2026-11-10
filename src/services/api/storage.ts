@@ -5,6 +5,7 @@ let memoryToken: string | null = null;
 let memoryWilayah: string | null = null;
 let memoryOnboarded: boolean = false;
 let memoryUser: User | null = null;
+let memoryActiveLahanId: string | null = null;
 let isStorageInitialized: boolean = false;
 
 export const initStorageAsync = async (): Promise<{
@@ -12,18 +13,21 @@ export const initStorageAsync = async (): Promise<{
   onboarded: boolean;
   wilayah: string | null;
   user: User | null;
+  activeLahanId: string | null;
 }> => {
   try {
-    const [token, onboarded, wilayah, userStr] = await Promise.all([
+    const [token, onboarded, wilayah, userStr, activeLahanId] = await Promise.all([
       AsyncStorage.getItem('pekarangin_token'),
       AsyncStorage.getItem('pekarangin_onboarded'),
       AsyncStorage.getItem('pekarangin_wilayah'),
       AsyncStorage.getItem('pekarangin_user'),
+      AsyncStorage.getItem('pekarangin_active_lahan_id'),
     ]);
 
     if (token) memoryToken = token;
     if (onboarded === 'true') memoryOnboarded = true;
     if (wilayah) memoryWilayah = wilayah;
+    if (activeLahanId) memoryActiveLahanId = activeLahanId;
     if (userStr) {
       try {
         memoryUser = JSON.parse(userStr);
@@ -40,6 +44,7 @@ export const initStorageAsync = async (): Promise<{
     onboarded: memoryOnboarded,
     wilayah: memoryWilayah,
     user: memoryUser,
+    activeLahanId: memoryActiveLahanId,
   };
 };
 
@@ -120,6 +125,49 @@ export const lahanStorage = {
   setGridSnapshot: (lahanId: string, snapshot: number[]): void => {
     memoryGridSnapshots[lahanId] = snapshot;
     AsyncStorage.setItem(`pekarangin_grid_${lahanId}`, JSON.stringify(snapshot)).catch(console.warn);
+  },
+};
+
+export const activeLahanStorage = {
+  get: (): string | null => {
+    if (memoryActiveLahanId) return memoryActiveLahanId;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const val = window.localStorage.getItem('pekarangin_active_lahan_id');
+        if (val) {
+          memoryActiveLahanId = val;
+          return val;
+        }
+      } catch {}
+    }
+    return null;
+  },
+  set: (lahanId: string | null): void => {
+    memoryActiveLahanId = lahanId;
+    if (lahanId) {
+      AsyncStorage.setItem('pekarangin_active_lahan_id', lahanId).catch(console.warn);
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          window.localStorage.setItem('pekarangin_active_lahan_id', lahanId);
+        } catch {}
+      }
+    } else {
+      AsyncStorage.removeItem('pekarangin_active_lahan_id').catch(console.warn);
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          window.localStorage.removeItem('pekarangin_active_lahan_id');
+        } catch {}
+      }
+    }
+  },
+  clear: (): void => {
+    memoryActiveLahanId = null;
+    AsyncStorage.removeItem('pekarangin_active_lahan_id').catch(console.warn);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.removeItem('pekarangin_active_lahan_id');
+      } catch {}
+    }
   },
 };
 

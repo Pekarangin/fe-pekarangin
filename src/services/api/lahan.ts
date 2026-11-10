@@ -8,6 +8,7 @@ export interface CreateLahanPayload {
   luas_m2: number;
   paparan_sinar: PaparanSinar;
   sumber_paparan: SumberPaparan;
+  metode_input?: 'grid' | 'manual';
 }
 
 export interface AnalisisCahayaResult {

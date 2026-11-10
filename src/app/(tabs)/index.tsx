@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Image,
   Modal,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,7 +16,6 @@ import {
   Trees,
   Droplets,
   Sprout,
-  Circle,
   ChevronRight,
   Sparkles,
   Sun,
@@ -23,16 +23,17 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
-  Layers,
   X,
   CheckCircle2,
-  ExternalLink,
+  Trash2,
 } from 'lucide-react-native';
 import { useApp } from '../../context/AppContext';
 import { Badge } from '../../components/ui/Badge';
 import { getCropImageSource } from '../../constants/cropImages';
 import { fetchLiveWeather, RealWeather } from '../../services/weather';
-import { PaparanSinar } from '../../types';
+import { PaparanSinar, Lahan } from '../../types';
+import { WilayahPickerModal } from '../../components/ui/WilayahPickerModal';
+import { DeleteLahanModal } from '../../components/ui/DeleteLahanModal';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
@@ -45,13 +46,42 @@ export default function DashboardHomeScreen() {
     activeCrops,
     activeLahan,
     setActiveLahan,
+    deleteLahan,
+    updateUserProfile,
+    toggleChecklistSiram,
+    toggleChecklistPupuk,
     toggleAllSiram,
-    toggleAllPupuk,
     startTour,
   } = useApp();
 
   const [weather, setWeather] = useState<RealWeather | null>(null);
   const [isLahanModalOpen, setIsLahanModalOpen] = useState(false);
+  const [wilayahModalVisible, setWilayahModalVisible] = useState(false);
+  const [lahanToDelete, setLahanToDelete] = useState<Lahan | null>(null);
+  const [isDeletingLahan, setIsDeletingLahan] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!lahanToDelete) return;
+    try {
+      setIsDeletingLahan(true);
+      await deleteLahan(lahanToDelete.lahan_id);
+      setLahanToDelete(null);
+      setIsLahanModalOpen(false);
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      Alert.alert('Gagal Menghapus', err?.message || 'Terjadi kesalahan saat menghapus pekarangan.');
+    } finally {
+      setIsDeletingLahan(false);
+    }
+  };
+
+  const handleSelectWilayah = async (formattedWilayah: string) => {
+    try {
+      await updateUserProfile({ wilayah: formattedWilayah });
+    } catch (err) {
+      console.warn('Gagal perbarui lokasi wilayah:', err);
+    }
+  };
 
   useEffect(() => {
     if (welcome === 'true') {
@@ -75,12 +105,15 @@ export default function DashboardHomeScreen() {
   const activeOnlyCrops = activeCrops.filter(
     c => c.status === 'AKTIF' && (!activeLahan || c.lahan_id === activeLahan.lahan_id)
   );
-  const isSiramDone =
-    activeOnlyCrops.length > 0 &&
-    activeOnlyCrops.every(c => c.checklist_hari_ini?.siram_done);
-  const isPupukDone =
-    activeOnlyCrops.length > 0 &&
-    activeOnlyCrops.every(c => c.checklist_hari_ini?.pupuk_done);
+
+  const totalTasks = activeOnlyCrops.length * 2;
+  const completedTasks = activeOnlyCrops.reduce(
+    (acc, c) =>
+      acc + (c.checklist_hari_ini?.siram_done ? 1 : 0) + (c.checklist_hari_ini?.pupuk_done ? 1 : 0),
+    0
+  );
+  const allSiramDone =
+    activeOnlyCrops.length > 0 && activeOnlyCrops.every(c => c.checklist_hari_ini?.siram_done);
 
   // Ambil cuaca real-time berdasarkan lokasi/wilayah user
   useEffect(() => {
@@ -102,24 +135,6 @@ export default function DashboardHomeScreen() {
     return 'Rp ' + num.toLocaleString('id-ID');
   };
 
-  const activeRth = activeLahan?.luas_m2 || stats.rth_aktif_m2;
-
-  const handleToggleSiram = () => {
-    if (activeOnlyCrops.length === 0) {
-      router.push('/(tabs)/rekomendasi');
-      return;
-    }
-    toggleAllSiram(!isSiramDone);
-  };
-
-  const handleTogglePupuk = () => {
-    if (activeOnlyCrops.length === 0) {
-      router.push('/(tabs)/rekomendasi');
-      return;
-    }
-    toggleAllPupuk(!isPupukDone);
-  };
-
   return (
     <View
       style={{
@@ -134,7 +149,9 @@ export default function DashboardHomeScreen() {
       >
         {/* Top Bar: Location & User Profile Avatar */}
         <View className="flex-row items-center justify-between mb-4">
-          <View
+          <TouchableOpacity
+            onPress={() => setWilayahModalVisible(true)}
+            activeOpacity={0.7}
             style={{ flex: 1, marginRight: 10 }}
             className="flex-row items-center bg-white px-3 py-1.5 rounded-full border border-gray-200/80 shadow-2xs"
           >
@@ -150,9 +167,10 @@ export default function DashboardHomeScreen() {
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {user?.wilayah || weather?.locationName || 'Lokasi Pekarangan'}
+              {user?.wilayah || weather?.locationName || 'Pilih Lokasi Pekarangan'}
             </Text>
-          </View>
+            <ChevronRight size={12} color="#9CA3AF" style={{ marginLeft: 3, flexShrink: 0 }} />
+          </TouchableOpacity>
 
           <View style={{ gap: 8, flexShrink: 0 }} className="flex-row items-center">
             {/* Real Weather Mini Pill */}
@@ -218,18 +236,21 @@ export default function DashboardHomeScreen() {
                 <TouchableOpacity
                   onPress={() => setIsLahanModalOpen(true)}
                   activeOpacity={0.8}
-                  className="flex-row items-center flex-1 mr-2"
+                  className="flex-row items-center flex-1 mr-3"
                 >
-                  <View className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 items-center justify-center mr-3">
+                  <View className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 items-center justify-center mr-3 flex-shrink-0">
                     <Trees size={20} color="#166534" />
                   </View>
-                  <View className="flex-1">
+                  <View className="flex-1 min-w-0">
                     <View className="flex-row items-center">
-                      <Text className="text-[10px] font-black text-emerald-700 uppercase tracking-wider">
+                      <Text
+                        numberOfLines={1}
+                        className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex-shrink-0"
+                      >
                         Pekarangan Aktif
                       </Text>
                       {lahans.length > 1 && (
-                        <View className="bg-emerald-100 px-1.5 py-0.2 rounded-full ml-1.5">
+                        <View className="bg-emerald-100 px-1.5 py-0.5 rounded-full ml-1.5 flex-shrink-0">
                           <Text className="text-[9px] font-bold text-emerald-800">
                             {lahans.length} Lahan
                           </Text>
@@ -237,36 +258,30 @@ export default function DashboardHomeScreen() {
                       )}
                     </View>
                     <View className="flex-row items-center mt-0.5">
-                      <Text className="text-sm font-black text-gray-900 mr-1" numberOfLines={1}>
+                      <Text
+                        style={{ flexShrink: 1 }}
+                        className="text-sm font-black text-gray-900 mr-1"
+                        numberOfLines={1}
+                      >
                         🌱 {activeLahan.nama_lahan}
                       </Text>
-                      <ChevronDown size={14} color="#4B5563" />
+                      <ChevronDown size={14} color="#6B7280" style={{ flexShrink: 0 }} />
                     </View>
-                    <Text className="text-[11px] font-medium text-gray-500 mt-0.5">
+                    <Text className="text-[11px] font-medium text-gray-500 mt-0.5" numberOfLines={1}>
                       {activeLahan.luas_m2} m² • {formatPaparanSinar(activeLahan.paparan_sinar)}
                     </Text>
                   </View>
                 </TouchableOpacity>
 
-                <View className="flex-row items-center gap-1.5">
-                  <TouchableOpacity
-                    onPress={() => router.push('/(tabs)/lahan')}
-                    activeOpacity={0.8}
-                    className="px-3 py-1.5 rounded-xl bg-gray-100 border border-gray-200 items-center justify-center"
-                  >
-                    <Text className="text-[10px] font-bold text-gray-700">
-                      Ubah
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => setIsLahanModalOpen(true)}
-                    activeOpacity={0.8}
-                    className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200 items-center justify-center"
-                  >
-                    <Layers size={14} color="#166534" />
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  onPress={() => router.push('/(tabs)/lahan')}
+                  activeOpacity={0.8}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200/80 items-center justify-center flex-shrink-0"
+                >
+                  <Text className="text-xs font-bold text-[#166534]">
+                    Ubah
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
           ) : (
@@ -308,57 +323,57 @@ export default function DashboardHomeScreen() {
 
           {/* Hero Header */}
           <View className="flex-row justify-between items-start mb-2">
-            <View>
-              <View className="flex-row items-center mb-1">
+            <View className="flex-1 mr-2">
+              <View className="flex-row flex-wrap items-center gap-1.5 mb-1">
                 <Text className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider">
                   Total Hemat Belanja
                 </Text>
-                <View className="bg-emerald-500/25 px-2 py-0.5 rounded-full ml-2 border border-emerald-400/30">
-                  <Text className="text-[10px] font-extrabold text-emerald-100">
+                <View className="bg-emerald-500/25 px-2 py-0.5 rounded-full border border-emerald-400/30">
+                  <Text className="text-[9px] font-extrabold text-emerald-100">
                     Akumulasi Panen
                   </Text>
                 </View>
               </View>
-              <Text className="text-[34px] font-black text-white tracking-tight">
+              <Text className="text-[32px] font-black text-white tracking-tight" numberOfLines={1}>
                 {formatRupiah(stats.total_hemat_rp)}
               </Text>
             </View>
 
-            <View className="w-12 h-12 rounded-2xl bg-white/15 items-center justify-center border border-white/20 shadow-inner">
-              <Leaf size={24} color="#A7F3D0" fill="#A7F3D0" />
+            <View className="w-11 h-11 rounded-2xl bg-white/15 items-center justify-center border border-white/20 shadow-inner">
+              <Leaf size={22} color="#A7F3D0" fill="#A7F3D0" />
             </View>
           </View>
 
           {/* Hero Divider */}
-          <View className="h-[1px] bg-white/15 my-3.5" />
+          <View className="h-[1px] bg-white/15 my-3" />
 
           {/* 3-Pill Micro Stats Row */}
-          <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center justify-between gap-2">
             {/* RTH Lahan */}
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/lahan')}
-              className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-2.5 mr-2 items-center"
+              className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-1.5 items-center justify-center min-w-0"
             >
               <View className="flex-row items-center mb-0.5">
-                <Trees size={13} color="#6EE7B7" />
-                <Text className="text-[10px] font-bold text-emerald-200 ml-1">
-                  Luas RTH
+                <Trees size={12} color="#6EE7B7" />
+                <Text className="text-[10px] font-bold text-emerald-200 ml-1" numberOfLines={1}>
+                  Lahan RTH
                 </Text>
               </View>
-              <Text className="text-xs font-black text-white">
-                {activeRth || 0} m²
+              <Text className="text-xs font-black text-white" numberOfLines={1}>
+                {activeLahan ? `${activeLahan.luas_m2} m²` : `${stats.rth_aktif_m2 || 0} m²`}
               </Text>
             </TouchableOpacity>
 
             {/* Total Panen */}
-            <View className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-2.5 mr-2 items-center">
+            <View className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-1.5 items-center justify-center min-w-0">
               <View className="flex-row items-center mb-0.5">
-                <Sprout size={13} color="#FDE047" />
-                <Text className="text-[10px] font-bold text-emerald-200 ml-1">
-                  Hasil Panen
+                <Sprout size={12} color="#FDE047" />
+                <Text className="text-[10px] font-bold text-emerald-200 ml-1" numberOfLines={1}>
+                  Panen
                 </Text>
               </View>
-              <Text className="text-xs font-black text-white">
+              <Text className="text-xs font-black text-white" numberOfLines={1}>
                 {stats.total_panen_kg} kg
               </Text>
             </View>
@@ -366,15 +381,15 @@ export default function DashboardHomeScreen() {
             {/* Tanaman Aktif */}
             <TouchableOpacity
               onPress={() => router.push('/(tabs)/tracking')}
-              className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-2.5 items-center"
+              className="flex-1 bg-black/15 border border-white/10 rounded-2xl py-2 px-1.5 items-center justify-center min-w-0"
             >
               <View className="flex-row items-center mb-0.5">
-                <Sparkles size={13} color="#93C5FD" />
-                <Text className="text-[10px] font-bold text-emerald-200 ml-1">
+                <Sparkles size={12} color="#93C5FD" />
+                <Text className="text-[10px] font-bold text-emerald-200 ml-1" numberOfLines={1}>
                   Tanaman
                 </Text>
               </View>
-              <Text className="text-xs font-black text-white">
+              <Text className="text-xs font-black text-white" numberOfLines={1}>
                 {activeOnlyCrops.length} Aktif
               </Text>
             </TouchableOpacity>
@@ -418,11 +433,11 @@ export default function DashboardHomeScreen() {
         {/* Quick Stepper Guide: Alur Panduan Pintar */}
         <View className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm shadow-black/5 mb-5">
           <View className="flex-row items-center justify-between mb-3.5">
-            <View>
+            <View className="flex-1 mr-2">
               <Text className="text-sm font-black text-gray-900">
                 Alur Panduan Pekarangan
               </Text>
-              <Text className="text-[11px] font-medium text-gray-500">
+              <Text className="text-[11px] font-medium text-gray-500 mt-0.5" numberOfLines={1}>
                 Langkah terpadu panen mandiri berkelanjutan
               </Text>
             </View>
@@ -442,7 +457,7 @@ export default function DashboardHomeScreen() {
                 <View className="flex-1">
                   <Text className="text-xs font-bold text-gray-900">Sketsa & Cek Sinar Lahan</Text>
                   <Text className="text-[11px] text-emerald-800 font-medium">
-                    {activeLahan ? `${activeLahan.nama_lahan} (${activeRth} m²)` : 'Belum Ada Lahan (Mulai Sketsa)'}
+                    {activeLahan ? `${activeLahan.nama_lahan} (${activeLahan.luas_m2} m²)` : 'Belum Ada Lahan (Mulai Sketsa)'}
                   </Text>
                 </View>
               </View>
@@ -489,23 +504,52 @@ export default function DashboardHomeScreen() {
           </View>
         </View>
 
-        {/* Section: Tugas Hari Ini (Interactive Checklist) */}
+        {/* Section: Tugas Hari Ini (Checklist Per Tanaman Langsung di Beranda) */}
         <View className="mb-5">
           <View className="flex-row items-center justify-between mb-3">
-            <View>
-              <Text className="text-lg font-black text-gray-900 tracking-tight">
-                Tugas Hari Ini
-              </Text>
-              <Text className="text-[11px] font-medium text-gray-500">
+            <View className="flex-1 mr-2">
+              <View className="flex-row items-center flex-wrap gap-2">
+                <Text className="text-lg font-black text-gray-900 tracking-tight">
+                  Tugas Hari Ini
+                </Text>
+                {activeOnlyCrops.length > 0 && (
+                  <View
+                    className={`px-2.5 py-0.5 rounded-full ${
+                      completedTasks === totalTasks && totalTasks > 0
+                        ? 'bg-emerald-100 border border-emerald-200'
+                        : 'bg-gray-100 border border-gray-200'
+                    }`}
+                  >
+                    <Text
+                      className={`text-[10px] font-black ${
+                        completedTasks === totalTasks && totalTasks > 0
+                          ? 'text-emerald-900'
+                          : 'text-gray-600'
+                      }`}
+                    >
+                      {completedTasks === totalTasks && totalTasks > 0
+                        ? 'Semua Tuntas ✨'
+                        : `${completedTasks}/${totalTasks} Selesai`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text className="text-[11px] font-medium text-gray-500 mt-0.5">
                 Aktivitas rutin perawatan pekarangan Anda
               </Text>
             </View>
-            {activeOnlyCrops.length > 0 && (
-              <View className="bg-emerald-100 px-2.5 py-1 rounded-full">
-                <Text className="text-xs font-black text-emerald-900">
-                  {(isSiramDone ? 1 : 0) + (isPupukDone ? 1 : 0)}/2 Selesai
+
+            {activeOnlyCrops.length > 1 && !allSiramDone && (
+              <TouchableOpacity
+                onPress={() => toggleAllSiram(true)}
+                activeOpacity={0.8}
+                className="bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full flex-row items-center"
+              >
+                <Droplets size={11} color="#0284C7" />
+                <Text className="text-[10px] font-bold text-blue-700 ml-1">
+                  Siram Semua
                 </Text>
-              </View>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -532,68 +576,126 @@ export default function DashboardHomeScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={{ gap: 14 }} className="flex-row">
-              {/* Task Card 1: Siram Tanaman */}
-              <TouchableOpacity
-                onPress={handleToggleSiram}
-                activeOpacity={0.82}
-                className={`flex-1 p-4 rounded-3xl border transition-all ${
-                  isSiramDone
-                    ? 'bg-emerald-50 border-emerald-300 shadow-2xs'
-                    : 'bg-white border-gray-200/80 shadow-xs'
-                }`}
-              >
-                <View className="flex-row items-center justify-between mb-3">
-                  <View className="w-10 h-10 rounded-2xl bg-orange-100 items-center justify-center">
-                    <Droplets size={20} color="#EA580C" />
-                  </View>
-                  {isSiramDone ? (
-                    <View className="w-6 h-6 rounded-full bg-emerald-600 items-center justify-center">
-                      <Check size={14} color="#FFFFFF" strokeWidth={3} />
+            <View className="space-y-2.5">
+              {activeOnlyCrops.map(crop => {
+                const siramDone = crop.checklist_hari_ini?.siram_done ?? false;
+                const pupukDone = crop.checklist_hari_ini?.pupuk_done ?? false;
+                const cropFullyTended = siramDone && pupukDone;
+
+                return (
+                  <View
+                    key={crop.tanaman_aktif_id}
+                    className="bg-white rounded-3xl p-3.5 border border-emerald-100/60 shadow-xs mb-2.5"
+                  >
+                    {/* Crop Info Row */}
+                    <View className="flex-row items-center justify-between mb-2.5">
+                      <View className="flex-row items-center flex-1 mr-2 min-w-0">
+                        <View className="w-9 h-9 rounded-xl overflow-hidden bg-emerald-50 border border-emerald-100 mr-2.5 flex-shrink-0">
+                          <Image
+                            source={getCropImageSource(crop.komoditas_nama, crop.image_url)}
+                            className="w-full h-full"
+                            resizeMode="cover"
+                          />
+                        </View>
+                        <View className="flex-1 min-w-0">
+                          <Text className="text-sm font-black text-gray-900 capitalize" numberOfLines={1}>
+                            {crop.komoditas_nama}
+                          </Text>
+                          <Text className="text-[10px] font-semibold text-gray-400 mt-0.5" numberOfLines={1}>
+                            Hari ke-{crop.hari_ke} • {crop.fase || 'Vegetatif'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Status Pill */}
+                      <View
+                        className={`px-2 py-0.5 rounded-full ${
+                          cropFullyTended
+                            ? 'bg-emerald-100'
+                            : siramDone || pupukDone
+                            ? 'bg-amber-100'
+                            : 'bg-gray-100'
+                        }`}
+                      >
+                        <Text
+                          className={`text-[10px] font-black ${
+                            cropFullyTended
+                              ? 'text-emerald-900'
+                              : siramDone || pupukDone
+                              ? 'text-amber-800'
+                              : 'text-gray-500'
+                          }`}
+                        >
+                          {cropFullyTended ? 'Tuntas ✨' : siramDone || pupukDone ? '1/2 Selesai' : 'Belum dirawat'}
+                        </Text>
+                      </View>
                     </View>
-                  ) : (
-                    <Circle size={22} color="#D1D5DB" strokeWidth={2} />
-                  )}
-                </View>
 
-                <Text className="text-sm font-black text-gray-900">
-                  Siram Tanaman
-                </Text>
-                <Text className="text-xs font-semibold text-gray-500 mt-1">
-                  {isSiramDone ? 'Sudah disiram ✅' : 'Pagi / Sore'}
-                </Text>
-              </TouchableOpacity>
+                    {/* Action Checklist Tiles (Siram & Pupuk) */}
+                    <View className="flex-row gap-2">
+                      {/* Siram Button */}
+                      <TouchableOpacity
+                        onPress={() => toggleChecklistSiram(crop.tanaman_aktif_id)}
+                        activeOpacity={0.8}
+                        className={`flex-1 py-2 px-3 rounded-xl border flex-row items-center justify-between ${
+                          siramDone
+                            ? 'bg-emerald-50/80 border-emerald-300'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <View className="flex-row items-center flex-1 mr-1">
+                          <View
+                            className={`w-4 h-4 rounded-md items-center justify-center mr-1.5 ${
+                              siramDone ? 'bg-[#166534]' : 'border border-gray-400 bg-white'
+                            }`}
+                          >
+                            {siramDone && <Check size={10} color="#FFFFFF" strokeWidth={3} />}
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            className={`text-xs ${
+                              siramDone ? 'text-emerald-900 font-black' : 'text-gray-800 font-bold'
+                            }`}
+                          >
+                            {siramDone ? 'Sudah Disiram' : 'Siram'}
+                          </Text>
+                        </View>
+                        <Text className="text-xs">💧</Text>
+                      </TouchableOpacity>
 
-              {/* Task Card 2: Beri Pupuk */}
-              <TouchableOpacity
-                onPress={handleTogglePupuk}
-                activeOpacity={0.82}
-                className={`flex-1 p-4 rounded-3xl border transition-all ${
-                  isPupukDone
-                    ? 'bg-emerald-50 border-emerald-300 shadow-2xs'
-                    : 'bg-white border-gray-200/80 shadow-xs'
-                }`}
-              >
-                <View className="flex-row items-center justify-between mb-3">
-                  <View className="w-10 h-10 rounded-2xl bg-pink-100 items-center justify-center">
-                    <Sprout size={20} color="#DB2777" />
-                  </View>
-                  {isPupukDone ? (
-                    <View className="w-6 h-6 rounded-full bg-emerald-600 items-center justify-center">
-                      <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                      {/* Pupuk Button */}
+                      <TouchableOpacity
+                        onPress={() => toggleChecklistPupuk(crop.tanaman_aktif_id)}
+                        activeOpacity={0.8}
+                        className={`flex-1 py-2 px-3 rounded-xl border flex-row items-center justify-between ${
+                          pupukDone
+                            ? 'bg-emerald-50/80 border-emerald-300'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <View className="flex-row items-center flex-1 mr-1">
+                          <View
+                            className={`w-4 h-4 rounded-md items-center justify-center mr-1.5 ${
+                              pupukDone ? 'bg-[#166534]' : 'border border-gray-400 bg-white'
+                            }`}
+                          >
+                            {pupukDone && <Check size={10} color="#FFFFFF" strokeWidth={3} />}
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            className={`text-xs ${
+                              pupukDone ? 'text-emerald-900 font-black' : 'text-gray-800 font-bold'
+                            }`}
+                          >
+                            {pupukDone ? 'Sudah Dipupuk' : 'Pupuk'}
+                          </Text>
+                        </View>
+                        <Text className="text-xs">🌿</Text>
+                      </TouchableOpacity>
                     </View>
-                  ) : (
-                    <Circle size={22} color="#D1D5DB" strokeWidth={2} />
-                  )}
-                </View>
-
-                <Text className="text-sm font-black text-gray-900">
-                  Beri Pupuk
-                </Text>
-                <Text className="text-xs font-semibold text-gray-500 mt-1">
-                  {isPupukDone ? 'Sudah dipupuk ✅' : 'Sesuai Siklus'}
-                </Text>
-              </TouchableOpacity>
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
@@ -644,73 +746,92 @@ export default function DashboardHomeScreen() {
             </View>
           ) : (
             <View style={{ gap: 14 }} className="flex-row">
-              {activeOnlyCrops.slice(0, 2).map((crop) => (
-                <TouchableOpacity
-                  key={crop.tanaman_aktif_id}
-                  onPress={() => router.push('/(tabs)/tracking')}
-                  activeOpacity={0.9}
-                  className="flex-1 bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-xs"
-                >
-                  {/* Photo Banner with Badges */}
-                  <View className="relative h-32 w-full bg-gray-100">
-                    <Image
-                      source={getCropImageSource(crop.komoditas_nama, crop.image_url)}
-                      className="w-full h-full"
-                      resizeMode="cover"
-                    />
-                    {crop.persentase_hari && crop.persentase_hari >= 70 ? (
-                      <View className="absolute top-2.5 right-2.5 bg-amber-500 px-2.5 py-0.5 rounded-full shadow-xs">
-                        <Text className="text-[10px] font-black text-white">
-                          Siap Panen
-                        </Text>
-                      </View>
-                    ) : (
-                      <View className="absolute top-2.5 right-2.5 bg-black/50 px-2.5 py-0.5 rounded-full">
+              {activeOnlyCrops.slice(0, 2).map((crop) => {
+                const siramDone = crop.checklist_hari_ini?.siram_done ?? false;
+                const pupukDone = crop.checklist_hari_ini?.pupuk_done ?? false;
+
+                // Persentase progres menuju perkiraan waktu panen
+                const harvestProgress = (() => {
+                  if (crop.persentase_hari !== undefined && crop.persentase_hari !== null && crop.persentase_hari > 0) {
+                    return crop.persentase_hari;
+                  }
+                  if (crop.tanggal_tanam && crop.perkiraan_panen) {
+                    const tanam = new Date(crop.tanggal_tanam).getTime();
+                    const panen = new Date(crop.perkiraan_panen).getTime();
+                    const now = new Date().getTime();
+                    const total = panen - tanam;
+                    if (total > 0) {
+                      return Math.min(100, Math.max(1, Math.round(((now - tanam) / total) * 100)));
+                    }
+                  }
+                  return Math.min(100, Math.max(1, Math.round((crop.hari_ke / 30) * 100)));
+                })();
+
+                return (
+                  <TouchableOpacity
+                    key={crop.tanaman_aktif_id}
+                    onPress={() => router.push('/(tabs)/tracking')}
+                    activeOpacity={0.9}
+                    className="flex-1 bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-xs"
+                  >
+                    {/* Photo Banner with Badges */}
+                    <View className="relative h-32 w-full bg-gray-100">
+                      <Image
+                        source={getCropImageSource(crop.komoditas_nama, crop.image_url)}
+                        className="w-full h-full"
+                        resizeMode="cover"
+                      />
+                      <View className="absolute top-2.5 left-2.5 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-full">
                         <Text className="text-[10px] font-bold text-white">
                           Hari ke-{crop.hari_ke}
                         </Text>
                       </View>
-                    )}
-                  </View>
-
-                  {/* Card Details */}
-                  <View className="p-4">
-                    <Text className="text-base font-black text-gray-900 capitalize" numberOfLines={1}>
-                      {crop.komoditas_nama}
-                    </Text>
-
-                    {/* Progress Stats */}
-                    <View className="flex-row justify-between items-center mt-2 mb-1">
-                      <Text className="text-xs font-semibold text-gray-500">
-                        {crop.fase || 'Vegetatif'}
-                      </Text>
-                      <Text className="text-xs font-black text-[#124E2A]">
-                        {crop.persentase_hari || 50}%
-                      </Text>
-                    </View>
-
-                    {/* Progress Bar */}
-                    <View className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
-                      <View
-                        style={{ width: `${crop.persentase_hari || 50}%` }}
-                        className="h-full bg-[#124E2A] rounded-full"
-                      />
-                    </View>
-
-                    <View className="mt-3 flex-row items-center justify-between pt-2 border-t border-gray-100">
-                      <Text className="text-[11px] font-bold text-gray-400">
-                        Pekarangan
-                      </Text>
-                      <View className="flex-row items-center">
-                        <Text className="text-xs font-extrabold text-[#124E2A] mr-0.5">
-                          Rawat
+                      <View className="absolute top-2.5 right-2.5 bg-emerald-700 px-2 py-0.5 rounded-full">
+                        <Text className="text-[10px] font-bold text-white">
+                          {crop.fase || 'Vegetatif'}
                         </Text>
-                        <ArrowRight size={12} color="#124E2A" />
                       </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
+
+                    {/* Card Details */}
+                    <View className="p-4">
+                      <Text className="text-base font-black text-gray-900 capitalize" numberOfLines={1}>
+                        {crop.komoditas_nama}
+                      </Text>
+
+                      {/* Harvest Progress Stats */}
+                      <View className="flex-row justify-between items-center mt-2 mb-1">
+                        <Text className="text-[11px] font-semibold text-gray-500">
+                          Progres Panen
+                        </Text>
+                        <Text className="text-xs font-black text-[#124E2A]">
+                          {harvestProgress}%
+                        </Text>
+                      </View>
+
+                      {/* Harvest Progress Bar */}
+                      <View className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <View
+                          style={{ width: `${harvestProgress}%` }}
+                          className="h-full rounded-full bg-[#124E2A]"
+                        />
+                      </View>
+
+                      <View className="mt-3 flex-row items-center justify-between pt-2 border-t border-gray-100">
+                        <Text className="text-[11px] font-bold text-gray-400">
+                          {siramDone && pupukDone ? 'Tuntas 💧🌱' : siramDone || pupukDone ? '1/2 Selesai' : 'Perlu dirawat'}
+                        </Text>
+                        <View className="flex-row items-center">
+                          <Text className="text-xs font-extrabold text-[#124E2A] mr-0.5">
+                            Rawat
+                          </Text>
+                          <ArrowRight size={12} color="#124E2A" />
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           )}
         </View>
@@ -723,40 +844,40 @@ export default function DashboardHomeScreen() {
         animationType="fade"
         onRequestClose={() => setIsLahanModalOpen(false)}
       >
-        <View className="flex-1 bg-black/65 justify-end">
-          <View
-            style={{
-              maxHeight: '85%',
-              paddingBottom: Math.max(insets.bottom, 20),
-            }}
-            className="bg-white rounded-t-[36px] w-full p-6 shadow-2xl"
-          >
+        <View className="flex-1 bg-black/60 justify-end">
+          <TouchableOpacity
+            activeOpacity={1}
+            className="flex-1"
+            onPress={() => setIsLahanModalOpen(false)}
+          />
+          <View className="bg-white rounded-t-3xl p-6 max-h-[80%]">
             {/* Modal Header */}
             <View className="flex-row items-center justify-between pb-4 border-b border-gray-100 mb-4">
-              <View className="flex-row items-center">
-                <View className="w-9 h-9 rounded-2xl bg-emerald-100 items-center justify-center mr-2.5">
-                  <Trees size={18} color="#166534" />
+              <View className="flex-row items-center flex-1 mr-2 min-w-0">
+                <View className="w-8 h-8 rounded-full bg-emerald-100 items-center justify-center mr-2.5 flex-shrink-0">
+                  <Trees size={16} color="#1C7430" />
                 </View>
-                <View>
-                  <Text className="text-base font-black text-gray-900">
-                    Pilih & Kelola Pekarangan
+                <View className="flex-1 min-w-0">
+                  <Text className="text-base font-black text-gray-900" numberOfLines={1}>
+                    Pilih Pekarangan
                   </Text>
-                  <Text className="text-[11px] font-medium text-gray-500">
-                    Tentukan pekarangan yang sedang Anda tinjau
+                  <Text className="text-[11px] font-medium text-gray-500" numberOfLines={1}>
+                    Kelola dan tinjau pekarangan aktif Anda
                   </Text>
                 </View>
               </View>
               <TouchableOpacity
                 onPress={() => setIsLahanModalOpen(false)}
                 activeOpacity={0.7}
-                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center flex-shrink-0"
               >
                 <X size={16} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
             {/* List Lahans */}
-            <ScrollView showsVerticalScrollIndicator={false} className="max-h-80 mb-4">
+            <ScrollView showsVerticalScrollIndicator={false} className="mb-4">
               {lahans.length === 0 ? (
                 <View className="py-6 items-center">
                   <Text className="text-xs font-semibold text-gray-400">
@@ -764,87 +885,126 @@ export default function DashboardHomeScreen() {
                   </Text>
                 </View>
               ) : (
-                <View style={{ gap: 10 }}>
+                <View className="space-y-2.5">
                   {lahans.map(lahan => {
                     const isActive = activeLahan?.lahan_id === lahan.lahan_id;
+                    const countInThisLahan = activeCrops.filter(
+                      c => c.lahan_id === lahan.lahan_id && c.status === 'AKTIF'
+                    ).length;
+                    const isUnused = countInThisLahan === 0;
+
                     return (
-                      <TouchableOpacity
+                      <View
                         key={lahan.lahan_id}
-                        onPress={() => {
-                          setActiveLahan(lahan);
-                          setIsLahanModalOpen(false);
-                        }}
-                        activeOpacity={0.8}
-                        className={`p-4 rounded-2xl border flex-row items-center justify-between ${
+                        className={`p-3.5 rounded-2xl border flex-row items-center justify-between ${
                           isActive
-                            ? 'bg-emerald-50/70 border-emerald-400'
+                            ? 'bg-emerald-50/80 border-emerald-500'
                             : 'bg-gray-50 border-gray-200'
                         }`}
                       >
-                        <View className="flex-1 mr-2">
+                        <TouchableOpacity
+                          onPress={() => {
+                            setActiveLahan(lahan);
+                            setIsLahanModalOpen(false);
+                          }}
+                          activeOpacity={0.7}
+                          className="flex-1 mr-2"
+                        >
                           <View className="flex-row items-center">
                             <Text className="text-sm font-black text-gray-900" numberOfLines={1}>
                               🌱 {lahan.nama_lahan}
                             </Text>
                             {isActive && (
-                              <View className="bg-emerald-600 px-2 py-0.5 rounded-full ml-2">
+                              <View className="bg-[#1C7430] px-2 py-0.5 rounded-full ml-2">
                                 <Text className="text-[9px] font-bold text-white">
                                   Aktif
                                 </Text>
                               </View>
                             )}
+                            {isUnused && (
+                              <View className="bg-gray-200 px-2 py-0.5 rounded-full ml-1.5">
+                                <Text className="text-[9px] font-bold text-gray-600">
+                                  Kosong
+                                </Text>
+                              </View>
+                            )}
                           </View>
-                          <Text className="text-xs text-gray-500 mt-1 font-medium">
-                            {lahan.luas_m2} m² • {formatPaparanSinar(lahan.paparan_sinar)}
+                          <Text className="text-xs text-gray-500 mt-0.5 font-medium">
+                            {lahan.luas_m2} m² • {formatPaparanSinar(lahan.paparan_sinar)} • {isUnused ? 'Belum Digunakan' : `${countInThisLahan} Tanaman Dirawat`}
                           </Text>
+                        </TouchableOpacity>
+
+                        <View className="flex-row items-center">
+                          {isActive && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                setActiveLahan(lahan);
+                                setIsLahanModalOpen(false);
+                              }}
+                              className="mr-1"
+                            >
+                              <CheckCircle2 size={18} color="#1C7430" />
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            onPress={() => setLahanToDelete(lahan)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            activeOpacity={0.7}
+                            className="px-2.5 py-1.5 rounded-xl bg-red-50 items-center justify-center border border-red-200 ml-2 flex-row"
+                          >
+                            <Trash2 size={12} color="#DC2626" />
+                            <Text className="text-[10px] font-bold text-red-600 ml-1">
+                              Hapus
+                            </Text>
+                          </TouchableOpacity>
                         </View>
-                        {isActive ? (
-                          <CheckCircle2 size={20} color="#166534" />
-                        ) : (
-                          <Circle size={18} color="#9CA3AF" />
-                        )}
-                      </TouchableOpacity>
+                      </View>
                     );
                   })}
                 </View>
               )}
             </ScrollView>
 
-            {/* Action Buttons */}
-            <View style={{ gap: 8 }}>
-              {activeLahan && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setIsLahanModalOpen(false);
-                    router.push('/(tabs)/lahan');
-                  }}
-                  activeOpacity={0.85}
-                  className="w-full bg-gray-100 border border-gray-200 py-3 rounded-2xl flex-row items-center justify-center"
-                >
-                  <Text className="text-xs font-bold text-gray-800">
-                    Ubah Data Pekarangan Ini
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                onPress={() => {
-                  setIsLahanModalOpen(false);
-                  router.push('/wizard-setup' as any);
-                }}
-                activeOpacity={0.85}
-                style={{ gap: 8 }}
-                className="w-full bg-[#124E2A] py-3.5 rounded-2xl flex-row items-center justify-center shadow-xs"
-              >
-                <Plus size={18} color="#FFFFFF" />
-                <Text className="text-xs font-black text-white">
-                  Tambah Pekarangan Baru
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {/* Action Button */}
+            <TouchableOpacity
+              onPress={() => {
+                setIsLahanModalOpen(false);
+                router.push('/(tabs)/lahan');
+              }}
+              activeOpacity={0.85}
+              className="w-full bg-[#1C7430] py-3 rounded-2xl items-center justify-center flex-row shadow-sm shadow-[#1C7430]/20"
+            >
+              <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
+              <Text className="text-xs font-black text-white ml-1.5">
+                Tambah / Kelola Pekarangan
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      {/* Modal Konfirmasi Hapus Pekarangan (Card) */}
+      <DeleteLahanModal
+        visible={Boolean(lahanToDelete)}
+        lahan={lahanToDelete}
+        cropCount={
+          lahanToDelete
+            ? activeCrops.filter(
+                c => c.lahan_id === lahanToDelete.lahan_id && c.status === 'AKTIF'
+              ).length
+            : 0
+        }
+        isDeleting={isDeletingLahan}
+        onClose={() => setLahanToDelete(null)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      {/* Modal: Ubah Lokasi Wilayah Pekarangan */}
+      <WilayahPickerModal
+        visible={wilayahModalVisible}
+        onClose={() => setWilayahModalVisible(false)}
+        onSelectWilayah={handleSelectWilayah}
+      />
     </View>
   );
 }

@@ -411,7 +411,22 @@ export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } 
               placeholderTextColor="#9CA3AF"
               value={inputText}
               onChangeText={setInputText}
-              multiline
+              multiline={false}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              onSubmitEditing={() => {
+                if (inputText.trim() && !isLoading) {
+                  handleSendMessage();
+                }
+              }}
+              onKeyPress={(e: any) => {
+                if (e.nativeEvent?.key === 'Enter' && !e.nativeEvent?.shiftKey) {
+                  e.preventDefault?.();
+                  if (inputText.trim() && !isLoading) {
+                    handleSendMessage();
+                  }
+                }
+              }}
               maxLength={500}
               className="flex-1 text-sm text-gray-900 max-h-24 py-1"
             />

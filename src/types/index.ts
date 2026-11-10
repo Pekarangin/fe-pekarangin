@@ -10,7 +10,6 @@ export interface User {
   email: string;
   avatar_url?: string | null;
   wilayah?: string;
-  no_hp?: string;
   created_at?: string;
 }
 
@@ -22,6 +21,7 @@ export interface Lahan {
   grid_snapshot: number[]; // Array 0..63 for 8x8 grid
   paparan_sinar: PaparanSinar;
   sumber_paparan: SumberPaparan;
+  metode_input?: 'grid' | 'manual';
   foto_url?: string | null;
   jumlah_tanaman_aktif?: number;
   created_at?: string;
@@ -50,6 +50,7 @@ export interface RekomendasiItem {
   waktu_panen_hari: number;
   luas_dibutuhkan_m2: number;
   tingkat_kesulitan: TingkatKesulitan;
+  kebutuhan_sinar?: PaparanSinar;
   kesesuaian_sinar: KesesuaianSinar;
   harga_pasar_per_kg: number;
   konsumsi_rt_kg_per_bulan: number;
@@ -58,6 +59,10 @@ export interface RekomendasiItem {
   jadwal_siram_hari?: number;
   jadwal_pupuk_hari?: number;
   media_tanam?: string;
+  luas_cukup?: boolean;
+  catatan_lahan?: string | null;
+  lahan_terpakai_m2?: number;
+  lahan_sisa_m2?: number;
 }
 
 export interface TanamanAktif {
@@ -72,6 +77,8 @@ export interface TanamanAktif {
   status: StatusTanaman;
   hari_ke: number;
   persentase_hari?: number;
+  luas_dibutuhkan_m2?: number;
+  jumlah_tanaman?: number;
   fase?: string;
   image_url?: string;
   checklist_hari_ini?: {

@@ -28,24 +28,22 @@ import {
   X,
   Upload,
   CheckCircle2,
-  Leaf,
   Sprout,
   Clock,
   ChevronRight,
-  Sparkle,
   Grid,
   Check,
+  AlertCircle,
 } from 'lucide-react-native';
-import { useApp } from '../context/AppContext';
+import { useApp, formatScore } from '../context/AppContext';
 import { PaparanSinar, SumberPaparan, RekomendasiItem } from '../types';
 import { lahanService } from '../services/api';
 import { getCropImageSource } from '../constants/cropImages';
+import { CELL_AREA_M2, TOTAL_CELLS, generateGridCellsForArea } from '../utils/grid';
 
 // 8x8 Grid = 64 cells
 const GRID_ROWS = 8;
 const GRID_COLS = 8;
-const TOTAL_CELLS = GRID_ROWS * GRID_COLS;
-const CELL_AREA_M2 = 0.25;
 
 export default function WizardSetupScreen() {
   const router = useRouter();
@@ -86,50 +84,84 @@ export default function WizardSetupScreen() {
   const [selectedCropId, setSelectedCropId] = useState<string | null>(null);
   const [plantingCrop, setPlantingCrop] = useState(false);
 
+  const parsedManual = parseFloat(manualLuas.replace(',', '.'));
+  const isManualBelowMin =
+    inputMode === 'manual' &&
+    (manualLuas.trim() === '' || isNaN(parsedManual) || parsedManual < 0.25);
+
   const calculatedLuas =
-    inputMode === 'grid'
-      ? Number((selectedCells.length * CELL_AREA_M2).toFixed(2))
-      : Number(parseFloat(manualLuas) || 0);
+    inputMode === 'manual'
+      ? (!isNaN(parsedManual) && manualLuas.trim() !== '' ? parsedManual : 0)
+      : Number((selectedCells.length * CELL_AREA_M2).toFixed(2));
+
+  const isBelowMin =
+    inputMode === 'manual' ? isManualBelowMin : calculatedLuas < 0.25;
+
+  const handleManualLuasChange = (text: string) => {
+    setManualLuas(text);
+    const parsed = parseFloat(text.replace(',', '.'));
+    if (!isNaN(parsed) && parsed > 0) {
+      setSelectedCells(generateGridCellsForArea(parsed));
+      setActivePreset(null);
+    } else {
+      setSelectedCells([]);
+      setActivePreset(null);
+    }
+  };
+
+  const handleSwitchToManual = () => {
+    setInputMode('manual');
+    if (selectedCells.length > 0) {
+      setManualLuas(Number((selectedCells.length * CELL_AREA_M2).toFixed(2)).toString());
+    }
+  };
+
+  const handleSwitchToGrid = () => {
+    setInputMode('grid');
+    const parsed = parseFloat(manualLuas.replace(',', '.'));
+    if (!isNaN(parsed) && parsed > 0) {
+      setSelectedCells(generateGridCellsForArea(parsed));
+    }
+  };
 
   const toggleCell = (index: number) => {
     setActivePreset(null);
     setSelectedCells(prev => {
-      if (prev.includes(index)) {
-        return prev.filter(i => i !== index);
-      } else {
-        return [...prev, index];
-      }
+      const next = prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index];
+      const newArea = Number((next.length * CELL_AREA_M2).toFixed(2));
+      setManualLuas(newArea > 0 ? newArea.toString() : '');
+      return next;
     });
   };
 
   const applyPreset = (type: 'square' | 'rect' | 'lshape' | 'all' | 'clear') => {
+    let cells: number[] = [];
     if (type === 'clear') {
-      setActivePreset(null);
-      setSelectedCells([]);
+      cells = [];
     } else if (type === 'all') {
-      setActivePreset('all');
-      setSelectedCells(Array.from({ length: TOTAL_CELLS }, (_, i) => i));
+      cells = Array.from({ length: TOTAL_CELLS }, (_, i) => i);
     } else if (type === 'square') {
-      setActivePreset('square');
-      setSelectedCells([
+      cells = [
         18, 19, 20, 21,
         26, 27, 28, 29,
         34, 35, 36, 37,
         42, 43, 44, 45,
-      ]);
+      ];
     } else if (type === 'rect') {
-      setActivePreset('rect');
-      setSelectedCells([
+      cells = [
         16, 17, 18, 19, 20, 21, 22, 23,
         24, 25, 26, 27, 28, 29, 30, 31,
-      ]);
+      ];
     } else if (type === 'lshape') {
-      setActivePreset('lshape');
-      setSelectedCells([
+      cells = [
         10, 11, 18, 19, 26, 27, 34, 35,
         42, 43, 44, 45, 46, 47, 50, 51,
-      ]);
+      ];
     }
+    setActivePreset(type === 'clear' ? null : type);
+    setSelectedCells(cells);
+    const newArea = Number((cells.length * CELL_AREA_M2).toFixed(2));
+    setManualLuas(newArea > 0 ? newArea.toString() : '');
   };
 
   const runAiAnalysis = async (uri: string, mimeType: string = 'image/jpeg') => {
@@ -159,15 +191,34 @@ export default function WizardSetupScreen() {
 
   const handleTakePhoto = async () => {
     try {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.setAttribute('capture', 'environment');
+        input.onchange = async (e: any) => {
+          const file = e.target?.files?.[0];
+          if (file) {
+            const uri = URL.createObjectURL(file);
+            const mime = file.type || 'image/jpeg';
+            setAiPhotoUri(uri);
+            await runAiAnalysis(uri, mime);
+          }
+        };
+        input.click();
+        return;
+      }
+
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Izin Kamera', 'Akses kamera dibutuhkan untuk memotret pekarangan Anda.');
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
+        mediaTypes: ['images'],
+        allowsEditing: false,
         quality: 0.8,
+        cameraType: ImagePicker.CameraType.back,
       });
       if (!result.canceled && result.assets[0]?.uri) {
         const uri = result.assets[0].uri;
@@ -212,17 +263,25 @@ export default function WizardSetupScreen() {
     let cellsToSend = selectedCells;
 
     if (inputMode === 'manual') {
-      const parsed = parseFloat(manualLuas);
+      const parsed = parseFloat(manualLuas.replace(',', '.'));
       if (isNaN(parsed) || parsed < 0.25) {
-        Alert.alert('Luas Tidak Valid', 'Luas lahan minimal adalah 0.25 m²');
+        Alert.alert(
+          'Luas Lahan Tidak Memenuhi Syarat',
+          `Luas lahan minimal adalah 0.25 m² (standar 1 petak tanam). Nilai saat ini (${manualLuas || '0'} m²) tidak diperbolehkan agar tanaman dapat tumbuh optimal.\n\nSilakan masukkan minimal 0.25 m².`,
+          [{ text: 'Perbaiki Luas' }]
+        );
         return;
       }
-      const requiredCellCount = Math.max(1, Math.min(TOTAL_CELLS, Math.round(parsed / CELL_AREA_M2)));
-      cellsToSend = Array.from({ length: requiredCellCount }, (_, i) => i);
       finalLuas = Number(parsed.toFixed(2));
+      cellsToSend = generateGridCellsForArea(finalLuas);
     } else {
-      if (cellsToSend.length === 0) {
-        cellsToSend = [18, 19, 26, 27]; // fallback default sel
+      if (cellsToSend.length === 0 || finalLuas < 0.25) {
+        Alert.alert(
+          'Luas Lahan Tidak Memenuhi Syarat',
+          'Silakan pilih minimal 1 petak lahan (0.25 m²) pada sketsa grid sebelum melanjutkan.',
+          [{ text: 'Pilih Petak' }]
+        );
+        return;
       }
       finalLuas = Number((cellsToSend.length * CELL_AREA_M2).toFixed(2));
     }
@@ -235,6 +294,7 @@ export default function WizardSetupScreen() {
         grid_snapshot: cellsToSend,
         paparan_sinar: paparanSinar,
         sumber_paparan: sumberPaparan,
+        metode_input: inputMode,
       });
       await refreshRekomendasi();
       setStep(2);
@@ -349,9 +409,13 @@ export default function WizardSetupScreen() {
                 <Text className="text-base font-extrabold text-gray-900">
                   Luas Lahan
                 </Text>
-                <View className="bg-[#1C7430] px-3.5 py-1 rounded-full">
+                <View
+                  className={`px-3.5 py-1 rounded-full ${
+                    isBelowMin ? 'bg-red-600' : 'bg-[#1C7430]'
+                  }`}
+                >
                   <Text className="text-xs font-bold text-white">
-                    {calculatedLuas} m²
+                    {calculatedLuas} m²{isBelowMin ? ' (Kurang)' : ''}
                   </Text>
                 </View>
               </View>
@@ -359,7 +423,7 @@ export default function WizardSetupScreen() {
               {/* Segmented Switch: Input Manual / Sketsa Grid */}
               <View className="flex-row bg-[#F3F4F6] p-1.5 rounded-2xl mb-4">
                 <TouchableOpacity
-                  onPress={() => setInputMode('manual')}
+                  onPress={handleSwitchToManual}
                   className={`flex-1 py-2 rounded-xl items-center justify-center ${
                     inputMode === 'manual' ? 'bg-white shadow-xs' : ''
                   }`}
@@ -374,7 +438,7 @@ export default function WizardSetupScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => setInputMode('grid')}
+                  onPress={handleSwitchToGrid}
                   className={`flex-1 py-2 rounded-xl items-center justify-center ${
                     inputMode === 'grid' ? 'bg-white shadow-xs' : ''
                   }`}
@@ -538,16 +602,53 @@ export default function WizardSetupScreen() {
                   <Text className="text-xs font-semibold text-gray-700 mb-1.5">
                     Masukkan Luas Pekarangan (m²)
                   </Text>
-                  <View className="flex-row items-center bg-[#F9FAFB] border border-gray-200 rounded-2xl px-4 py-3">
+                  <View
+                    className={`flex-row items-center rounded-2xl px-4 py-3 border ${
+                      isBelowMin
+                        ? 'border-red-400 bg-red-50/40'
+                        : 'border-gray-200 bg-[#F9FAFB]'
+                    }`}
+                  >
                     <TextInput
                       keyboardType="numeric"
                       value={manualLuas}
-                      onChangeText={setManualLuas}
+                      onChangeText={handleManualLuasChange}
+                      onBlur={() => {
+                        const val = parseFloat(manualLuas.replace(',', '.'));
+                        if (manualLuas.trim() !== '' && (!isNaN(val) && val < 0.25)) {
+                          Alert.alert(
+                            'Luas Lahan Kurang dari Standar',
+                            `Luas lahan minimal adalah 0.25 m² (1 petak tanam standar). Nilai ${manualLuas} m² tidak diperbolehkan agar tanaman dapat tumbuh optimal.`,
+                            [{ text: 'Perbaiki' }]
+                          );
+                        }
+                      }}
                       placeholder="Contoh: 6.75"
                       className="flex-1 text-base font-bold text-gray-900"
                     />
                     <Text className="text-sm font-bold text-gray-500">m²</Text>
                   </View>
+
+                  {isBelowMin ? (
+                    <View className="flex-row items-start bg-red-50 border border-red-200 rounded-2xl p-3.5 mt-2.5">
+                      <AlertCircle size={18} color="#DC2626" className="mt-0.5" />
+                      <View className="ml-2.5 flex-1">
+                        <Text className="text-xs font-bold text-red-900">
+                          Luas Lahan Kurang dari Batas Minimal!
+                        </Text>
+                        <Text className="text-[11px] font-medium text-red-700 mt-0.5 leading-snug">
+                          Luas minimal adalah 0.25 m² (1 petak tanam standar). Nilai di bawah 0.25 m² tidak diperbolehkan.
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View className="bg-emerald-50/70 border border-emerald-100 rounded-2xl p-3 mt-2.5 flex-row items-center">
+                      <Check size={14} color="#166534" style={{ marginRight: 8 }} />
+                      <Text className="text-[11px] font-semibold text-emerald-800 flex-1">
+                        Tersinkron: Otomatis memetakan {selectedCells.length} petak terpusat di sketsa grid (±{(selectedCells.length * CELL_AREA_M2).toFixed(2)} m²).
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -562,38 +663,49 @@ export default function WizardSetupScreen() {
               </Text>
 
               {/* 3 Sunlight Options */}
-              <View className="space-y-2.5 mb-4">
+              <View className="space-y-3 mb-4">
                 {/* Full Sun */}
                 <TouchableOpacity
                   onPress={() => {
                     setPaparanSinar('FULL_SUN');
                     setSumberPaparan('MANUAL');
                   }}
-                  activeOpacity={0.8}
-                  className={`flex-row items-center justify-between p-3.5 rounded-2xl border transition-all mb-2.5 ${
+                  activeOpacity={0.85}
+                  className={`p-4 rounded-3xl border transition-all mb-2.5 ${
                     paparanSinar === 'FULL_SUN'
-                      ? 'bg-green-50/80 border-[#1C7430]'
-                      : 'bg-[#F9FAFB] border-gray-100'
+                      ? 'bg-amber-50/70 border-amber-500 shadow-xs'
+                      : 'bg-[#F9FAFB] border-gray-200'
                   }`}
                 >
-                  <View className="flex-row items-center flex-1 mr-2">
-                    <View className="w-10 h-10 rounded-xl bg-amber-100 items-center justify-center mr-3">
-                      <Sun size={20} color="#D97706" />
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center flex-1 mr-2">
+                      <View className="w-11 h-11 rounded-2xl bg-amber-100 items-center justify-center mr-3 border border-amber-200">
+                        <Sun size={22} color="#D97706" />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-sm font-black text-gray-900">
+                          Sinar Penuh (Full Sun)
+                        </Text>
+                        <Text className="text-xs font-medium text-gray-500 mt-0.5">
+                          Lebih dari 6 jam sinar langsung / hari
+                        </Text>
+                      </View>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-sm font-bold text-gray-900">
-                        Sinar Penuh (Full Sun)
-                      </Text>
-                      <Text className="text-xs text-gray-500">
-                        Lebih dari 6 jam sinar langsung
-                      </Text>
-                    </View>
+
+                    {paparanSinar === 'FULL_SUN' ? (
+                      <View className="w-6 h-6 rounded-full bg-[#1C7430] items-center justify-center shadow-xs">
+                        <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                      </View>
+                    ) : (
+                      <View className="w-5 h-5 rounded-full border-2 border-gray-300" />
+                    )}
                   </View>
-                  {paparanSinar === 'FULL_SUN' && (
-                    <View className="w-6 h-6 rounded-full bg-[#1C7430] items-center justify-center">
-                      <Check size={14} color="#FFFFFF" />
-                    </View>
-                  )}
+
+                  <View className="flex-row items-center bg-white/80 py-1.5 px-2.5 rounded-xl border border-amber-200/60 mt-1">
+                    <Text className="text-[10px] font-bold text-amber-900">
+                      🌶️ Paling Cocok: Cabai, Tomat, Terong, Jagung
+                    </Text>
+                  </View>
                 </TouchableOpacity>
 
                 {/* Partial Sun */}
@@ -602,31 +714,42 @@ export default function WizardSetupScreen() {
                     setPaparanSinar('PARTIAL_SUN');
                     setSumberPaparan('MANUAL');
                   }}
-                  activeOpacity={0.8}
-                  className={`flex-row items-center justify-between p-3.5 rounded-2xl border transition-all mb-2.5 ${
+                  activeOpacity={0.85}
+                  className={`p-4 rounded-3xl border transition-all mb-2.5 ${
                     paparanSinar === 'PARTIAL_SUN'
-                      ? 'bg-green-50/80 border-[#1C7430]'
-                      : 'bg-[#F9FAFB] border-gray-100'
+                      ? 'bg-emerald-50/70 border-emerald-600 shadow-xs'
+                      : 'bg-[#F9FAFB] border-gray-200'
                   }`}
                 >
-                  <View className="flex-row items-center flex-1 mr-2">
-                    <View className="w-10 h-10 rounded-xl bg-orange-100 items-center justify-center mr-3">
-                      <CloudSun size={20} color="#EA580C" />
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center flex-1 mr-2">
+                      <View className="w-11 h-11 rounded-2xl bg-orange-100 items-center justify-center mr-3 border border-orange-200">
+                        <CloudSun size={22} color="#EA580C" />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-sm font-black text-gray-900">
+                          Sinar Parsial (Partial Sun)
+                        </Text>
+                        <Text className="text-xs font-medium text-gray-500 mt-0.5">
+                          3 - 6 jam sinar langsung / ternaungi
+                        </Text>
+                      </View>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-sm font-bold text-gray-900">
-                        Sinar Parsial (Partial Sun)
-                      </Text>
-                      <Text className="text-xs text-gray-500">
-                        3 - 6 jam sinar langsung / ternaungi
-                      </Text>
-                    </View>
+
+                    {paparanSinar === 'PARTIAL_SUN' ? (
+                      <View className="w-6 h-6 rounded-full bg-[#1C7430] items-center justify-center shadow-xs">
+                        <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                      </View>
+                    ) : (
+                      <View className="w-5 h-5 rounded-full border-2 border-gray-300" />
+                    )}
                   </View>
-                  {paparanSinar === 'PARTIAL_SUN' && (
-                    <View className="w-6 h-6 rounded-full bg-[#1C7430] items-center justify-center">
-                      <Check size={14} color="#FFFFFF" />
-                    </View>
-                  )}
+
+                  <View className="flex-row items-center bg-white/80 py-1.5 px-2.5 rounded-xl border border-emerald-200/60 mt-1">
+                    <Text className="text-[10px] font-bold text-emerald-900">
+                      🥬 Paling Cocok: Sawi, Kangkung, Bayam, Daun Bawang
+                    </Text>
+                  </View>
                 </TouchableOpacity>
 
                 {/* Shade */}
@@ -635,31 +758,42 @@ export default function WizardSetupScreen() {
                     setPaparanSinar('SHADE');
                     setSumberPaparan('MANUAL');
                   }}
-                  activeOpacity={0.8}
-                  className={`flex-row items-center justify-between p-3.5 rounded-2xl border transition-all ${
+                  activeOpacity={0.85}
+                  className={`p-4 rounded-3xl border transition-all mb-2.5 ${
                     paparanSinar === 'SHADE'
-                      ? 'bg-green-50/80 border-[#1C7430]'
-                      : 'bg-[#F9FAFB] border-gray-100'
+                      ? 'bg-sky-50/70 border-sky-500 shadow-xs'
+                      : 'bg-[#F9FAFB] border-gray-200'
                   }`}
                 >
-                  <View className="flex-row items-center flex-1 mr-2">
-                    <View className="w-10 h-10 rounded-xl bg-blue-100 items-center justify-center mr-3">
-                      <Cloud size={20} color="#0284C7" />
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center flex-1 mr-2">
+                      <View className="w-11 h-11 rounded-2xl bg-sky-100 items-center justify-center mr-3 border border-sky-200">
+                        <Cloud size={22} color="#0284C7" />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-sm font-black text-gray-900">
+                          Teduh (Shade)
+                        </Text>
+                        <Text className="text-xs font-medium text-gray-500 mt-0.5">
+                          Kurang dari 3 jam sinar matahari langsung
+                        </Text>
+                      </View>
                     </View>
-                    <View className="flex-1">
-                      <Text className="text-sm font-bold text-gray-900">
-                        Teduh (Shade)
-                      </Text>
-                      <Text className="text-xs text-gray-500">
-                        Kurang dari 3 jam sinar matahari
-                      </Text>
-                    </View>
+
+                    {paparanSinar === 'SHADE' ? (
+                      <View className="w-6 h-6 rounded-full bg-[#1C7430] items-center justify-center shadow-xs">
+                        <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                      </View>
+                    ) : (
+                      <View className="w-5 h-5 rounded-full border-2 border-gray-300" />
+                    )}
                   </View>
-                  {paparanSinar === 'SHADE' && (
-                    <View className="w-6 h-6 rounded-full bg-[#1C7430] items-center justify-center">
-                      <Check size={14} color="#FFFFFF" />
-                    </View>
-                  )}
+
+                  <View className="flex-row items-center bg-white/80 py-1.5 px-2.5 rounded-xl border border-sky-200/60 mt-1">
+                    <Text className="text-[10px] font-bold text-sky-900">
+                      🌿 Paling Cocok: Selada, Mint, Seledri, Pegagan
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               </View>
 
@@ -667,13 +801,27 @@ export default function WizardSetupScreen() {
               <TouchableOpacity
                 onPress={() => setAiModalVisible(true)}
                 activeOpacity={0.85}
-                className="flex-row items-center justify-center bg-green-50 border border-green-200 py-3.5 px-4 rounded-2xl shadow-2xs"
+                className="flex-row items-center justify-between bg-emerald-50/90 border border-emerald-300 p-3.5 rounded-2xl shadow-2xs"
               >
-                <Camera size={18} color="#1C7430" />
-                <Sparkles size={14} color="#EA580C" className="mx-1.5" />
-                <Text className="text-xs font-bold text-[#1C7430] ml-1">
-                  Deteksi Otomatis via AI Gemini Vision
-                </Text>
+                <View className="flex-row items-center flex-1 mr-2">
+                  <View className="w-10 h-10 rounded-xl bg-emerald-600 items-center justify-center mr-3 shadow-xs">
+                    <Camera size={18} color="#FFFFFF" />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center">
+                      <Text className="text-xs font-black text-emerald-950 mr-1.5">
+                        Deteksi AI Gemini Vision
+                      </Text>
+                      <Sparkles size={12} color="#D97706" />
+                    </View>
+                    <Text className="text-[11px] font-semibold text-emerald-800/80 mt-0.5">
+                      Foto pekarangan — AI otomatis tentukan intensitas sinar
+                    </Text>
+                  </View>
+                </View>
+                <View className="bg-emerald-600 px-2.5 py-1 rounded-xl">
+                  <Text className="text-[10px] font-black text-white">Scan 📸</Text>
+                </View>
               </TouchableOpacity>
 
               {aiResultNote && (
@@ -759,7 +907,7 @@ export default function WizardSetupScreen() {
                             </Text>
                             <View className="bg-emerald-100 px-2.5 py-0.5 rounded-full">
                               <Text className="text-[10px] font-black text-emerald-800">
-                                ⭐ {item.skor_prioritas}
+                                Skor: {formatScore(item.skor_prioritas)}
                               </Text>
                             </View>
                           </View>
