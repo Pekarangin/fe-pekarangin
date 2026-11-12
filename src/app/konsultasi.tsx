@@ -68,6 +68,20 @@ export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } 
 
   const activeOnlyCrops = activeCrops.filter(c => c.status === 'AKTIF');
 
+  // Deduplikasi opsi berdasarkan nama komoditas agar komoditas yang sama hanya muncul 1 kali
+  const uniqueCommodityCrops = React.useMemo(() => {
+    const seen = new Set<string>();
+    const result: typeof activeOnlyCrops = [];
+    for (const crop of activeOnlyCrops) {
+      const key = (crop.komoditas_nama || crop.komoditas_id || '').toLowerCase().trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(crop);
+      }
+    }
+    return result;
+  }, [activeOnlyCrops]);
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     return chatStorage.get(user?.user_id);
   });
@@ -272,11 +286,16 @@ export default function KonsultasiScreen({ isTab = false }: { isTab?: boolean } 
             </Text>
           </TouchableOpacity>
 
-          {activeOnlyCrops.map(crop => {
-            const isSelected = selectedCropId === crop.tanaman_aktif_id;
+          {uniqueCommodityCrops.map(crop => {
+            const selectedCrop = activeOnlyCrops.find(c => c.tanaman_aktif_id === selectedCropId);
+            const isSelected = selectedCrop
+              ? (selectedCrop.komoditas_nama || selectedCrop.komoditas_id || '').toLowerCase().trim() ===
+                (crop.komoditas_nama || crop.komoditas_id || '').toLowerCase().trim()
+              : selectedCropId === crop.tanaman_aktif_id;
+
             return (
               <TouchableOpacity
-                key={crop.tanaman_aktif_id}
+                key={crop.komoditas_id || crop.komoditas_nama || crop.tanaman_aktif_id}
                 onPress={() => setSelectedCropId(crop.tanaman_aktif_id)}
                 className={`px-3 py-1.5 rounded-xl mr-2 border ${
                   isSelected
