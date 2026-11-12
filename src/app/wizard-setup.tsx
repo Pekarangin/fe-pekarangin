@@ -1036,21 +1036,33 @@ export default function WizardSetupScreen() {
             <View style={{ gap: 10 }}>
               {!aiAnalysisDone ? (
                 <>
-                  <TouchableOpacity
-                    onPress={handleTakePhoto}
-                    style={{ gap: 8 }}
-                    className="w-full bg-[#124E2A] py-3.5 rounded-2xl flex-row items-center justify-center"
-                  >
-                    <Camera size={16} color="#FFFFFF" />
-                    <Text className="text-xs font-black text-white">Buka Kamera Perangkat</Text>
-                  </TouchableOpacity>
+                  {Platform.OS !== 'web' && (
+                    <TouchableOpacity
+                      onPress={handleTakePhoto}
+                      style={{ gap: 8 }}
+                      className="w-full bg-[#124E2A] py-3.5 rounded-2xl flex-row items-center justify-center"
+                    >
+                      <Camera size={16} color="#FFFFFF" />
+                      <Text className="text-xs font-black text-white">Buka Kamera Perangkat</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={handlePickImage}
                     style={{ gap: 8 }}
-                    className="w-full bg-gray-100 py-3.5 rounded-2xl flex-row items-center justify-center border border-gray-200"
+                    className={`w-full py-3.5 rounded-2xl flex-row items-center justify-center ${
+                      Platform.OS === 'web'
+                        ? 'bg-[#124E2A]'
+                        : 'bg-gray-100 border border-gray-200'
+                    }`}
                   >
-                    <Upload size={16} color="#4B5563" />
-                    <Text className="text-xs font-bold text-gray-700">Pilih dari Galeri</Text>
+                    <Upload size={16} color={Platform.OS === 'web' ? '#FFFFFF' : '#4B5563'} />
+                    <Text
+                      className={`text-xs ${
+                        Platform.OS === 'web' ? 'font-black text-white' : 'font-bold text-gray-700'
+                      }`}
+                    >
+                      Pilih dari Galeri
+                    </Text>
                   </TouchableOpacity>
                 </>
               ) : (
