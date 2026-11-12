@@ -19,7 +19,6 @@ import {
   Scale,
   X,
   Check,
-  Flame,
   AlertTriangle,
   Trophy,
   Sprout,
@@ -32,6 +31,7 @@ import { useApp } from '../../context/AppContext';
 import { Button } from '../../components/ui/Button';
 import { getCropImageSource } from '../../constants/cropImages';
 import { DeleteLahanModal } from '../../components/ui/DeleteLahanModal';
+import { calculateCropGrowth, groupActiveCrops, GroupedCrop } from '../../utils/cropProgress';
 
 export default function TrackingTab() {
   const router = useRouter();
@@ -44,6 +44,8 @@ export default function TrackingTab() {
     deleteLahan,
     toggleChecklistSiram,
     toggleChecklistPupuk,
+    toggleAllSiram,
+    toggleAllPupuk,
     recordPanen,
     recordGagal,
     stats,
@@ -54,6 +56,7 @@ export default function TrackingTab() {
   const [isLahanModalOpen, setIsLahanModalOpen] = useState(false);
   const [lahanToDelete, setLahanToDelete] = useState<any | null>(null);
   const [isDeletingLahan, setIsDeletingLahan] = useState(false);
+  const [selectedCropIndex, setSelectedCropIndex] = useState(0);
 
   const handleConfirmDelete = async () => {
     if (!lahanToDelete) return;
@@ -92,7 +95,7 @@ export default function TrackingTab() {
 
   // Panen input modal
   const [panenModalVisible, setPanenModalVisible] = useState(false);
-  const [selectedCropForPanen, setSelectedCropForPanen] = useState<string | null>(null);
+  const [selectedGroupForPanen, setSelectedGroupForPanen] = useState<GroupedCrop | null>(null);
   const [beratGram, setBeratGram] = useState('350');
   const [savingPanen, setSavingPanen] = useState(false);
 
@@ -106,30 +109,41 @@ export default function TrackingTab() {
 
   // Gagal cycle modal
   const [gagalModalVisible, setGagalModalVisible] = useState(false);
-  const [selectedCropForGagal, setSelectedCropForGagal] = useState<string | null>(null);
+  const [selectedGroupForGagal, setSelectedGroupForGagal] = useState<GroupedCrop | null>(null);
   const [alasanGagal, setAlasanGagal] = useState('Diserang Hama / Kutu');
 
   const activeOnly = activeCrops.filter(
     c => c.status === 'AKTIF' && (!activeLahan || c.lahan_id === activeLahan.lahan_id)
   );
 
-  const handleOpenPanenModal = (cropId: string) => {
-    setSelectedCropForPanen(cropId);
-    setBeratGram('350');
+  const handleOpenPanenModal = (group: GroupedCrop) => {
+    setSelectedGroupForPanen(group);
+    setBeratGram(String(Math.max(100, group.count * 250)));
     setPanenModalVisible(true);
   };
 
   const handleConfirmPanen = async () => {
-    if (!selectedCropForPanen) return;
+    if (!selectedGroupForPanen) return;
     setSavingPanen(true);
     try {
       const g = parseInt(beratGram || '100', 10);
-      const res = await recordPanen(selectedCropForPanen, g);
+      const count = Math.max(1, selectedGroupForPanen.crop_ids.length);
+      const perCropGram = Math.round(g / count);
+
+      let totalHemat = 0;
+      let nama = selectedGroupForPanen.komoditas_nama;
+
+      for (const id of selectedGroupForPanen.crop_ids) {
+        const res = await recordPanen(id, perCropGram);
+        if (res?.hematRp) totalHemat += res.hematRp;
+        if (res?.tanamanNama) nama = res.tanamanNama;
+      }
+
       setPanenModalVisible(false);
       setCelebrationData({
-        tanamanNama: res.tanamanNama,
+        tanamanNama: count > 1 ? `${nama} (${count} Tanaman)` : nama,
         beratGram: g,
-        hematRp: res.hematRp,
+        hematRp: totalHemat,
       });
       setCelebrationVisible(true);
     } catch (e) {
@@ -139,15 +153,17 @@ export default function TrackingTab() {
     }
   };
 
-  const handleOpenGagalModal = (cropId: string) => {
-    setSelectedCropForGagal(cropId);
+  const handleOpenGagalModal = (group: GroupedCrop) => {
+    setSelectedGroupForGagal(group);
     setGagalModalVisible(true);
   };
 
   const handleConfirmGagal = async () => {
-    if (!selectedCropForGagal) return;
+    if (!selectedGroupForGagal) return;
     try {
-      await recordGagal(selectedCropForGagal, alasanGagal);
+      for (const id of selectedGroupForGagal.crop_ids) {
+        await recordGagal(id, alasanGagal);
+      }
       setGagalModalVisible(false);
     } catch (e) {
       console.error(e);
@@ -256,25 +272,6 @@ export default function TrackingTab() {
           </TouchableOpacity>
         </View>
 
-        {/* Streak Motivation Banner (Hanya muncul jika ada tanaman aktif) */}
-        {activeOnly.length > 0 && (
-          <View className="bg-[#FFF7ED] border border-[#FED7AA] rounded-2xl p-3.5 mb-5 flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1 mr-2">
-              <View className="w-9 h-9 rounded-xl bg-[#EA580C] items-center justify-center mr-3">
-                <Flame size={20} color="#FFFFFF" fill="#FFFFFF" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-xs font-black text-[#9A3412]">
-                  Streak {stats.streak_hari} Hari Merawat Rutin! 🔥
-                </Text>
-                <Text className="text-[11px] font-medium text-[#C2410C] mt-0.5">
-                  Konsistensi Anda menjaga pertumbuhan tanaman tetap optimal.
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
         {activeOnly.length === 0 ? (
           <View className="bg-white rounded-3xl p-6 items-center border border-gray-100 shadow-sm mt-1">
             <View className="w-20 h-20 rounded-3xl bg-[#F0FDF4] items-center justify-center mb-4 border border-green-100 shadow-xs">
@@ -333,214 +330,282 @@ export default function TrackingTab() {
               </Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <View className="space-y-4">
-            {activeOnly.map(crop => {
-              const siramDone = crop.checklist_hari_ini?.siram_done ?? false;
-              const pupukDone = crop.checklist_hari_ini?.pupuk_done ?? false;
-              const careDoneCount = (siramDone ? 1 : 0) + (pupukDone ? 1 : 0);
-              const growthPercent = (() => {
-                if (crop.persentase_hari !== undefined && crop.persentase_hari !== null && crop.persentase_hari > 0) {
-                  return crop.persentase_hari;
-                }
-                if (crop.tanggal_tanam && crop.perkiraan_panen) {
-                  const tanam = new Date(crop.tanggal_tanam).getTime();
-                  const panen = new Date(crop.perkiraan_panen).getTime();
-                  const now = new Date().getTime();
-                  const total = panen - tanam;
-                  if (total > 0) {
-                    return Math.min(100, Math.max(1, Math.round(((now - tanam) / total) * 100)));
-                  }
-                }
-                return Math.min(100, Math.max(1, Math.round((crop.hari_ke / 30) * 100)));
-              })();
+        ) : (() => {
+          const groupedCrops = groupActiveCrops(activeOnly);
+          const safeGroupIndex = selectedCropIndex < groupedCrops.length ? selectedCropIndex : 0;
+          const currentGroup = groupedCrops[safeGroupIndex];
+          const growth = currentGroup.growth;
+          const allSiramDone = activeOnly.length > 0 && activeOnly.every(c => c.checklist_hari_ini?.siram_done);
+          const allPupukDone = activeOnly.length > 0 && activeOnly.every(c => c.checklist_hari_ini?.pupuk_done);
+          const careDoneCount = (allSiramDone ? 1 : 0) + (allPupukDone ? 1 : 0);
 
-              return (
-                <View
-                  key={crop.tanaman_aktif_id}
-                  className="bg-white rounded-3xl p-5 border border-emerald-100/60 shadow-sm shadow-emerald-950/5 mb-4"
+          return (
+            <View className="mb-4">
+              {/* Header Count & Switcher */}
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-row items-center">
+                  <Text className="text-base font-black text-gray-900">
+                    Tanaman Aktif
+                  </Text>
+                  <View className="ml-2.5 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    <Text className="text-xs font-black text-emerald-800">
+                      {activeOnly.length} Tanaman
+                    </Text>
+                  </View>
+                </View>
+                {groupedCrops.length > 1 && (
+                  <View className="flex-row items-center bg-gray-100 px-2.5 py-1 rounded-full">
+                    <Text className="text-[11px] font-bold text-gray-600">
+                      Jenis {safeGroupIndex + 1} dari {groupedCrops.length}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Horizontal Selector Pills (jika ada lebih dari 1 grup tanaman) */}
+              {groupedCrops.length > 1 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  className="mb-3.5"
+                  contentContainerStyle={{ gap: 8 }}
                 >
-                  {/* Top Header */}
-                  <View className="flex-row items-center justify-between mb-4">
-                    <View className="flex-row items-center flex-1 mr-2 min-w-0">
-                      <View className="w-12 h-12 rounded-2xl overflow-hidden bg-emerald-50 border border-emerald-200/60 mr-3 flex-shrink-0">
-                        <Image
-                          source={getCropImageSource(crop.komoditas_nama, crop.image_url)}
-                          className="w-full h-full"
-                          resizeMode="cover"
-                        />
-                      </View>
-                      <View className="flex-1 min-w-0">
-                        <Text className="text-base font-black text-gray-900 capitalize" numberOfLines={1}>
-                          {crop.komoditas_nama}
+                  {groupedCrops.map((g, idx) => {
+                    const isSelected = idx === safeGroupIndex;
+                    return (
+                      <TouchableOpacity
+                        key={g.group_id}
+                        onPress={() => setSelectedCropIndex(idx)}
+                        activeOpacity={0.8}
+                        className={`flex-row items-center px-3.5 py-2 rounded-2xl border ${
+                          isSelected
+                            ? 'bg-[#1C7430] border-[#1C7430] shadow-xs'
+                            : 'bg-white border-gray-200 shadow-2xs'
+                        }`}
+                      >
+                        <Text className="text-xs mr-1.5">{isSelected ? '🌱' : '🌿'}</Text>
+                        <Text
+                          className={`text-xs capitalize ${
+                            isSelected ? 'font-black text-white' : 'font-bold text-gray-700'
+                          }`}
+                        >
+                          {g.komoditas_nama}
                         </Text>
-                        <View className="flex-row items-center mt-1 flex-wrap gap-1.5">
-                          <View className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80">
-                            <Text className="text-[10px] font-bold text-emerald-800">
-                              {crop.fase || 'Vegetatif'}
-                            </Text>
-                          </View>
-                          <View className="bg-gray-100 px-2 py-0.5 rounded-full">
-                            <Text className="text-[10px] font-bold text-gray-600">
-                              {crop.luas_dibutuhkan_m2 || 0.25} m²
-                            </Text>
-                          </View>
-                          <Text className="text-xs font-semibold text-gray-400">
-                            Hari ke-{crop.hari_ke}
+                        <View
+                          className={`ml-2 px-1.5 py-0.5 rounded-full ${
+                            isSelected ? 'bg-white/20' : 'bg-gray-100'
+                          }`}
+                        >
+                          <Text
+                            className={`text-[9px] ${
+                              isSelected ? 'font-black text-white' : 'font-bold text-gray-500'
+                            }`}
+                          >
+                            {g.count} Tanaman
                           </Text>
                         </View>
-                      </View>
-                    </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
 
-                    <View className="items-end flex-shrink-0">
-                      <View className="bg-emerald-100 px-2.5 py-0.5 rounded-full mb-1">
-                        <Text className="text-[10px] font-black text-emerald-800">
-                          Aktif
-                        </Text>
-                      </View>
-                      <Text className="text-[10px] font-medium text-gray-400">
-                        Panen ~{formatShortDate(crop.perkiraan_panen)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Growth Progress Bar */}
-                  <View className="bg-[#F9FAFB] rounded-2xl p-3.5 mb-4 border border-gray-100">
-                    <View className="flex-row justify-between items-center mb-1.5">
-                      <Text className="text-xs font-bold text-gray-600">
-                        Fase Pertumbuhan
-                      </Text>
-                      <Text className="text-xs font-black text-[#1C7430]">
-                        {growthPercent}%
-                      </Text>
-                    </View>
-
-                    {/* Progress track */}
-                    <View className="w-full h-2 rounded-full bg-gray-200 overflow-hidden mb-2.5">
-                      <View
-                        style={{ width: `${growthPercent}%` }}
-                        className="h-full bg-[#1C7430] rounded-full"
+              {/* Single Group Plant Card */}
+              <View
+                key={currentGroup.group_id}
+                className="bg-white rounded-3xl p-5 border border-emerald-100/60 shadow-sm shadow-emerald-950/5 mb-4"
+              >
+                {/* Top Header */}
+                <View className="flex-row items-center justify-between mb-4">
+                  <View className="flex-row items-center flex-1 mr-2 min-w-0">
+                    <View className="w-12 h-12 rounded-2xl overflow-hidden bg-emerald-50 border border-emerald-200/60 mr-3 flex-shrink-0">
+                      <Image
+                        source={getCropImageSource(currentGroup.komoditas_nama, currentGroup.image_url)}
+                        className="w-full h-full"
+                        resizeMode="cover"
                       />
                     </View>
-
-                    {/* Milestones */}
-                    <View className="flex-row justify-between items-center px-0.5">
-                      <Text className={`text-[10px] font-bold ${crop.hari_ke >= 1 ? 'text-[#1C7430]' : 'text-gray-400'}`}>
-                        🌱 Bibit
+                    <View className="flex-1 min-w-0">
+                      <Text className="text-base font-black text-gray-900 capitalize" numberOfLines={1}>
+                        {currentGroup.komoditas_nama}
                       </Text>
-                      <Text className={`text-[10px] font-bold ${crop.hari_ke >= 10 ? 'text-[#1C7430]' : 'text-gray-400'}`}>
-                        🌿 Vegetatif
-                      </Text>
-                      <Text className={`text-[10px] font-bold ${crop.hari_ke >= 25 ? 'text-[#1C7430]' : 'text-gray-400'}`}>
-                        🌸 Bunga
-                      </Text>
-                      <Text className={`text-[10px] font-bold ${crop.hari_ke >= 40 ? 'text-[#EA580C]' : 'text-gray-400'}`}>
-                        🧺 Panen
-                      </Text>
+                      <View className="flex-row items-center mt-1 flex-wrap gap-1.5">
+                        <View className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80">
+                          <Text className="text-[10px] font-bold text-emerald-800">
+                            {growth.fase}
+                          </Text>
+                        </View>
+                        <View className="bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
+                          <Text className="text-[10px] font-black text-emerald-900">
+                            {currentGroup.count} Tanaman
+                          </Text>
+                        </View>
+                        <View className="bg-gray-100 px-2 py-0.5 rounded-full">
+                          <Text className="text-[10px] font-bold text-gray-600">
+                            {currentGroup.luas_m2} m²
+                          </Text>
+                        </View>
+                        <Text className="text-xs font-semibold text-gray-400">
+                          Hari ke-{growth.currentDay}
+                        </Text>
+                      </View>
                     </View>
                   </View>
 
-                  {/* Daily Care Checklist Tiles */}
-                  <View className="mb-4">
-                    <View className="flex-row items-center justify-between mb-2.5">
-                      <Text className="text-xs font-black text-gray-900 uppercase tracking-wide">
-                        Checklist Perawatan Hari Ini
-                      </Text>
-                      <Text className={`text-[11px] font-extrabold ${careDoneCount === 2 ? 'text-emerald-700' : 'text-gray-400'}`}>
-                        {careDoneCount === 2 ? 'Tuntas ✨' : `${careDoneCount}/2 Selesai`}
+                  <View className="items-end flex-shrink-0">
+                    <View className="bg-emerald-100 px-2.5 py-0.5 rounded-full mb-1">
+                      <Text className="text-[10px] font-black text-emerald-800">
+                        {growth.kondisiText}
                       </Text>
                     </View>
+                    <Text className="text-[10px] font-medium text-gray-400">
+                      Panen ~{formatShortDate(currentGroup.perkiraan_panen)}
+                    </Text>
+                  </View>
+                </View>
 
-                    <View className="space-y-2">
-                      {/* Siram Tile */}
-                      <TouchableOpacity
-                        onPress={() => toggleChecklistSiram(crop.tanaman_aktif_id)}
-                        activeOpacity={0.8}
-                        className={`flex-row items-center p-3 rounded-2xl border ${
-                          siramDone
-                            ? 'bg-emerald-50/70 border-emerald-300'
-                            : 'bg-white border-gray-200'
-                        }`}
-                      >
-                        <View
-                          className={`w-6 h-6 rounded-lg items-center justify-center mr-3 ${
-                            siramDone ? 'bg-[#1C7430]' : 'border-2 border-gray-300'
-                          }`}
-                        >
-                          {siramDone && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
-                        </View>
-                        <View className="flex-1">
-                          <Text
-                            className={`text-xs ${
-                              siramDone ? 'text-emerald-900 font-black' : 'text-gray-800 font-bold'
-                            }`}
-                          >
-                            {siramDone ? 'Sudah Disiram (Pagi / Sore)' : 'Siram Tanaman (Pagi / Sore)'}
-                          </Text>
-                        </View>
-                        <Text className="text-base">💧</Text>
-                      </TouchableOpacity>
-
-                      {/* Pupuk Tile */}
-                      <TouchableOpacity
-                        onPress={() => toggleChecklistPupuk(crop.tanaman_aktif_id)}
-                        activeOpacity={0.8}
-                        className={`flex-row items-center p-3 rounded-2xl border ${
-                          pupukDone
-                            ? 'bg-emerald-50/70 border-emerald-300'
-                            : 'bg-white border-gray-200'
-                        }`}
-                      >
-                        <View
-                          className={`w-6 h-6 rounded-lg items-center justify-center mr-3 ${
-                            pupukDone ? 'bg-[#1C7430]' : 'border-2 border-gray-300'
-                          }`}
-                        >
-                          {pupukDone && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
-                        </View>
-                        <View className="flex-1">
-                          <Text
-                            className={`text-xs ${
-                              pupukDone ? 'text-emerald-900 font-black' : 'text-gray-800 font-bold'
-                            }`}
-                          >
-                            {pupukDone ? 'Sudah Diberi Pupuk' : 'Beri Pupuk (Sesuai Siklus)'}
-                          </Text>
-                        </View>
-                        <Text className="text-base">🌿</Text>
-                      </TouchableOpacity>
+                {/* Growth Progress Bar */}
+                <View className="bg-[#F9FAFB] rounded-2xl p-3.5 mb-4 border border-gray-100">
+                  <View className="flex-row justify-between items-center mb-1.5">
+                    <View className="flex-row items-center">
+                      <Text className="text-xs font-bold text-gray-600 mr-2">
+                        Fase Pertumbuhan ({growth.fase})
+                      </Text>
                     </View>
+                    <Text className="text-xs font-black text-[#1C7430]">
+                      {growth.progressPercent}%
+                    </Text>
                   </View>
 
-                  {/* Actions Footer: Tandai Gagal & Catat Panen */}
-                  <View className="pt-3 border-t border-gray-100 flex-row justify-between items-center">
+                  {/* Progress track */}
+                  <View className="w-full h-2 rounded-full bg-gray-200 overflow-hidden mb-2.5">
+                    <View
+                      style={{ width: `${growth.progressPercent}%` }}
+                      className="h-full bg-[#1C7430] rounded-full"
+                    />
+                  </View>
+
+                  {/* Milestones dynamically adjusted */}
+                  <View className="flex-row justify-between items-center px-0.5">
+                    <Text className={`text-[10px] font-bold ${growth.milestoneActive.bibit ? 'text-[#1C7430]' : 'text-gray-400'}`}>
+                      🌱 Bibit
+                    </Text>
+                    <Text className={`text-[10px] font-bold ${growth.milestoneActive.vegetatif ? 'text-[#1C7430]' : 'text-gray-400'}`}>
+                      🌿 Vegetatif
+                    </Text>
+                    <Text className={`text-[10px] font-bold ${growth.milestoneActive.bunga ? 'text-[#1C7430]' : 'text-gray-400'}`}>
+                      🌸 Bunga
+                    </Text>
+                    <Text className={`text-[10px] font-bold ${growth.milestoneActive.panen ? 'text-[#EA580C]' : 'text-gray-400'}`}>
+                      🧺 Panen
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Daily Care Checklist Tiles (Serentak untuk seluruh tanaman pekarangan) */}
+                <View className="mb-4">
+                  <View className="flex-row items-center justify-between mb-2.5">
+                    <Text className="text-xs font-black text-gray-900 uppercase tracking-wide">
+                      Checklist Perawatan Hari Ini
+                    </Text>
+                    <Text className={`text-[11px] font-extrabold ${careDoneCount === 2 ? 'text-emerald-700' : 'text-gray-400'}`}>
+                      {careDoneCount === 2 ? 'Tuntas ✨' : `${careDoneCount}/2 Selesai`}
+                    </Text>
+                  </View>
+
+                  <View className="space-y-2">
+                    {/* Siram Tile */}
                     <TouchableOpacity
-                      onPress={() => handleOpenGagalModal(crop.tanaman_aktif_id)}
-                      activeOpacity={0.7}
-                      className="flex-row items-center py-2 px-2.5 rounded-xl"
+                      onPress={() => toggleAllSiram()}
+                      activeOpacity={0.8}
+                      className={`flex-row items-center p-3 rounded-2xl border ${
+                        allSiramDone
+                          ? 'bg-emerald-50/70 border-emerald-300'
+                          : 'bg-white border-gray-200'
+                      }`}
                     >
-                      <AlertTriangle size={13} color="#9CA3AF" />
-                      <Text className="text-xs font-semibold text-gray-400 ml-1.5">
-                        Tutup / Gagal
-                      </Text>
+                      <View
+                        className={`w-6 h-6 rounded-lg items-center justify-center mr-3 ${
+                          allSiramDone ? 'bg-[#1C7430]' : 'border-2 border-gray-300'
+                        }`}
+                      >
+                        {allSiramDone && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
+                      </View>
+                      <View className="flex-1">
+                        <Text
+                          className={`text-xs ${
+                            allSiramDone ? 'text-emerald-900 font-black' : 'text-gray-800 font-bold'
+                          }`}
+                        >
+                          {allSiramDone
+                            ? (activeOnly.length > 1 ? 'Semua Tanaman Sudah Disiram' : 'Sudah Disiram (Pagi / Sore)')
+                            : (activeOnly.length > 1 ? 'Siram Semua Tanaman' : 'Siram Tanaman (Pagi / Sore)')}
+                        </Text>
+                      </View>
+                      <Text className="text-base">💧</Text>
                     </TouchableOpacity>
 
+                    {/* Pupuk Tile */}
                     <TouchableOpacity
-                      onPress={() => handleOpenPanenModal(crop.tanaman_aktif_id)}
-                      activeOpacity={0.85}
-                      className="flex-row items-center bg-[#1C7430] px-4 py-2.5 rounded-2xl shadow-xs"
+                      onPress={() => toggleAllPupuk()}
+                      activeOpacity={0.8}
+                      className={`flex-row items-center p-3 rounded-2xl border ${
+                        allPupukDone
+                          ? 'bg-emerald-50/70 border-emerald-300'
+                          : 'bg-white border-gray-200'
+                      }`}
                     >
-                      <Scale size={14} color="#FFFFFF" />
-                      <Text className="text-xs font-black text-white ml-1.5">
-                        Catat Panen
-                      </Text>
+                      <View
+                        className={`w-6 h-6 rounded-lg items-center justify-center mr-3 ${
+                          allPupukDone ? 'bg-[#1C7430]' : 'border-2 border-gray-300'
+                        }`}
+                      >
+                        {allPupukDone && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
+                      </View>
+                      <View className="flex-1">
+                        <Text
+                          className={`text-xs ${
+                            allPupukDone ? 'text-emerald-900 font-black' : 'text-gray-800 font-bold'
+                          }`}
+                        >
+                          {allPupukDone
+                            ? (activeOnly.length > 1 ? 'Semua Tanaman Sudah Diberi Pupuk' : 'Sudah Diberi Pupuk')
+                            : (activeOnly.length > 1 ? 'Beri Pupuk Semua Tanaman' : 'Beri Pupuk (Sesuai Siklus)')}
+                        </Text>
+                      </View>
+                      <Text className="text-base">🌿</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-              );
-            })}
-          </View>
-        )}
+
+                {/* Actions Footer: Tandai Gagal & Catat Panen */}
+                <View className="pt-3 border-t border-gray-100 flex-row justify-between items-center">
+                  <TouchableOpacity
+                    onPress={() => handleOpenGagalModal(currentGroup)}
+                    activeOpacity={0.7}
+                    className="flex-row items-center py-2 px-2.5 rounded-xl"
+                  >
+                    <AlertTriangle size={13} color="#9CA3AF" />
+                    <Text className="text-xs font-semibold text-gray-400 ml-1.5">
+                      Tutup / Gagal
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleOpenPanenModal(currentGroup)}
+                    activeOpacity={0.85}
+                    className="flex-row items-center bg-[#1C7430] px-4 py-2.5 rounded-2xl shadow-xs"
+                  >
+                    <Scale size={14} color="#FFFFFF" />
+                    <Text className="text-xs font-black text-white ml-1.5">
+                      Catat Panen {currentGroup.count > 1 ? `(${currentGroup.count} Tanaman)` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          );
+        })()}
 
         {/* Realisasi Panen Input Modal */}
         <Modal
